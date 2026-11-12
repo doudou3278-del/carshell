@@ -23,6 +23,8 @@ const TOKEN = store.get('token', null) || (() => { const t = [...crypto.getRando
 let myComments = new Set(store.get('myComments', []));
 let nickname = store.get('nick', '');
 let myCars = new Set();
+let profile = store.get('profile', null); // {public_id, nickname, avatar}
+if (profile?.nickname && !nickname) nickname = profile.nickname;
 const COLS = 'id,name,brand,model,scale,wide,wide_link,len,wb,ft,rt,cover,thumb,ratio,finished,scan,parts,note,by_name,by_id,avatar,views,base_likes,like_count,week,week_key,created_ms,status';
 const BRANDS = ['田宫', '青岛社', '长谷川', '富士美', '京商', '其他'];
 const MODEL_RULES = [['RX-7', 'rx[ -]?7|fd3s|fc3s'], ['Supra', 'supra|苏普拉|牛魔王'], ['GT-R', 'gt[ -]?r|skyline|斯凯莱茵|(^|[^a-z0-9])r3[2345]([^a-z0-9]|$)'], ['86/BRZ', 'gt[ -]?86|gr[ -]?86|brz|(^|[^a-z0-9])86([^a-z0-9]|$)'], ['AE86', 'ae[ -]?86|豆腐店|trueno|levin'], ['Silvia', 'silvia|西尔维娅|180[ -]?sx|240[ -]?sx|(^|[^a-z0-9])s1[345]([^a-z0-9]|$)'], ['Fairlady Z', 'fairlady|350[ -]?z|370[ -]?z|400[ -]?z|(^|[^a-z0-9])z3[234]([^a-z0-9]|$)'], ['Lancer Evo', 'lancer|evolution|(^|[^a-z])evo([^a-z]|$)|蓝瑟'], ['Impreza', 'impreza|wrx|翼豹'], ['NSX', 'nsx'], ['MX-5', 'mx[ -]?5|miata|马自达小跑'], ['S2000', 's[ -]?2000'], ['Civic', 'civic|思域']];
@@ -386,7 +388,7 @@ function openDetail(id) {
       ${imgs.length > 1 ? `<div class="d-dots">${imgs.map((_, i) => `<i class="${i ? '' : 'on'}"></i>`).join('')}</div>` : ''}</div>
     <div class="d-content">
       <div class="d-title"><div><span class="eyebrow">${esc(c.brand)} · ${esc(c.model)} · ${esc(c.scale)}${c.wide ? ' · 宽体' : ''}</span><h2>${esc(c.name)}</h2>
-        <div class="d-by">${c.avatar ? `<img src="${esc(c.avatar)}" alt="">` : ''}<span>@${esc(c.by)} · ${fmtDate(c.time)} · ${c.views} 次浏览</span></div></div>
+        <a class="d-by" href="#/u/${encodeURIComponent(c.byId || c.by)}">${avatarHtml(c.avatar, c.by)}<span><b>@${esc(c.by)}</b> · ${fmtDate(c.time)} · ${c.views} 次浏览</span></a></div>
         <div class="d-actions">
           <button class="btn secondary ${liked.has(id) ? 'liked' : ''}" data-like="${esc(id)}">${I.heart}<span>${likeCount(c)}</span></button>
           <button class="btn secondary ${saved.has(id) ? 'saved' : ''}" data-save="${esc(id)}">${I.bookmark}<span>${saved.has(id) ? '已收藏' : '收藏'}</span></button>
@@ -594,7 +596,8 @@ async function loadRemote() {
       sb.from('cs_cars').select(COLS).order('created_ms', { ascending: false }).limit(2000),
       sb.rpc('cs_my_likes', { p_token: TOKEN }),
       sb.auth.getSession(),
-      sb.rpc('cs_my_cars', { p_token: TOKEN }).then(r => { myCars = new Set(r.data || []); })
+      sb.rpc('cs_my_cars', { p_token: TOKEN }).then(r => { myCars = new Set(r.data || []); }),
+      sb.rpc('cs_get_profile', { p_token: TOKEN }).then(r => { if (r.data) { profile = r.data; if (profile.nickname) nickname = profile.nickname; store.set('profile', profile); } })
     ]);
     if (error || !rows || !rows.length) throw error || new Error('empty');
     CARS.length = 0; BY_ID.clear();
@@ -691,6 +694,90 @@ function footMeta() {
     ? `${CARS.length} 款车壳 · 数据实时来自车友 · <button id="adminLink" class="link-btn">${isAdmin ? '退出管理' : '管理员'}</button>`
     : `数据迁移自「头蚊字 Dou」小程序 · 快照 ${fmtDate(DATA.exportedAt)} · 共 ${CARS.length} 款车壳 · <button id="adminLink" class="link-btn">管理员</button>`;
   $('#adminLink').onclick = adminLogin;
+}
+
+/* ---------- profile ---------- */
+function avatarHtml(src, name, cls = '') {
+  return src ? `<img class="${cls}" src="${esc(src)}" alt="" loading="lazy">` : `<span class="av ${cls}">${esc((name || '车').slice(0, 1))}</span>`;
+}
+function statsOf(list) {
+  return { n: list.length, likes: list.reduce((s, c) => s + likeCount(c), 0), views: list.reduce((s, c) => s + c.views, 0) };
+}
+function profileHead({ avatar, name, sub, stats, editable }) {
+  return `<section class="wrap page-enter"><div class="profile-card">
+    <div class="profile-top">
+      <button class="profile-avatar ${editable ? 'editable' : ''}" ${editable ? 'id="avatarBtn" aria-label="更换头像"' : 'tabindex="-1"'}>${avatarHtml(avatar, name)}${editable ? '<i>更换</i>' : ''}</button>
+      <div class="profile-name"><p class="eyebrow">${editable ? 'DOU / PROFILE' : 'GARAGE'}</p><h1>${esc(name)}</h1><p class="muted">${sub}</p></div>
+      ${editable ? '<button class="btn secondary small" id="editName">编辑昵称</button>' : ''}
+    </div>
+    <div class="profile-stats"><div><b>${stats.n}</b><span>投稿</span></div><div><b>${stats.likes}</b><span>获赞</span></div><div><b>${stats.views}</b><span>浏览</span></div></div>
+  </div></section>`;
+}
+function mePage() {
+  const mine = CARS.filter(c => myCars.has(c.id));
+  const savedList = CARS.filter(c => saved.has(c.id));
+  const likedList = remote ? CARS.filter(c => liked.has(c.id)) : [];
+  const name = profile?.nickname || nickname || '车友';
+  app.innerHTML = profileHead({ avatar: profile?.avatar, name, editable: !!sb,
+      sub: remote ? (profile?.nickname ? '这台设备上的车库。换设备或清理浏览器数据后会变成新身份。' : '设置昵称和头像，评论和投稿都会带上。') : '连接服务器后可设置昵称和头像。',
+      stats: statsOf(mine) }) + `
+  <section class="wrap"><a class="publish-card reveal" href="#/submit"><div><b>发布车壳</b><span>记录作品与实测尺寸</span></div><i>＋</i></a></section>
+  <section class="wrap me-section reveal"><div class="section-head"><div><h2>我的投稿</h2></div></div>
+    ${mine.length ? `<div class="grid">${mine.map(card).join('')}</div>` : `<div class="empty small"><b>还没有上传过车壳。</b>${isAdmin ? '小程序时代传过的车壳，可以在对应上传者的主页点「认领到这台设备」。' : ''}</div>`}</section>
+  <section class="wrap me-section reveal"><div class="section-head"><div><h2>收藏</h2><p>保存在这台设备的浏览器里。</p></div></div>
+    ${savedList.length ? `<div class="shelf">${savedList.map(card).join('')}</div>` : `<div class="empty small"><b>还没有收藏。</b>点车壳卡片右上角的书签即可收藏。</div>`}</section>
+  ${remote ? `<section class="wrap me-section reveal"><div class="section-head"><div><h2>赞过的</h2></div></div>
+    ${likedList.length ? `<div class="shelf">${likedList.map(card).join('')}</div>` : `<div class="empty small"><b>还没有点过赞。</b></div>`}</section>
+  <section class="wrap me-section reveal"><div class="section-head"><div><h2>我的评论</h2></div></div><div id="myComments" class="my-comments"><p class="muted">加载中…</p></div></section>` : ''}`;
+  if (!sb) return;
+  $('#editName').onclick = () => editProfile();
+  $('#avatarBtn').onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = () => i.files[0] && saveAvatar(i.files[0]); i.click(); };
+  if (remote) sb.rpc('cs_my_comments', { p_token: TOKEN }).then(({ data }) => {
+    const box = $('#myComments'); if (!box) return;
+    const list = (data || []).filter(x => BY_ID.has(x.car_id));
+    box.innerHTML = list.length ? list.map(x => { const c = BY_ID.get(x.car_id); return `<a class="my-comment" href="#/car/${esc(c.id)}">${img(c.thumb, '')}<div><p>${esc(x.content)}</p><span>${esc(c.name)} · ${ago(Date.parse(x.created_at))}</span></div></a>`; }).join('') : `<div class="empty small"><b>还没有发过评论。</b></div>`;
+  });
+}
+async function saveProfile(nick, avatar) {
+  const { data, error } = await sb.rpc('cs_save_profile', { p_token: TOKEN, p_nickname: nick, p_avatar: avatar || '' });
+  if (error) { toast(error.message); return false; }
+  profile = data; nickname = data.nickname; store.set('profile', profile); store.set('nick', nickname);
+  CARS.forEach(c => { if (myCars.has(c.id)) { c.by = data.nickname; c.avatar = data.avatar; c.byId = data.public_id; } });
+  return true;
+}
+function editProfile() {
+  const el = document.createElement('div'); el.className = 'cal';
+  el.innerHTML = `<form class="login-card"><h2>编辑昵称</h2><p class="muted">会同步到你发过的评论和投稿上。</p><input id="pNick" maxlength="20" value="${esc(profile?.nickname || nickname)}" placeholder="昵称" required><p class="login-err" id="pErr"></p><div style="display:flex;gap:10px"><button type="button" class="btn secondary" id="pCancel">取消</button><button class="btn primary" type="submit">保存</button></div></form>`;
+  document.body.appendChild(el); $('#pNick', el).focus();
+  $('#pCancel', el).onclick = () => el.remove();
+  $('form', el).onsubmit = async e => { e.preventDefault(); const n = $('#pNick', el).value.trim(); if (!n) return; if (await saveProfile(n, profile?.avatar)) { el.remove(); toast('已保存'); currentPage = null; render(); } };
+}
+async function saveAvatar(file) {
+  try {
+    toast('正在上传头像…');
+    const im = await loadImage(file), s = Math.min(im.naturalWidth, im.naturalHeight);
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    c.getContext('2d').drawImage(im, (im.naturalWidth - s) / 2, (im.naturalHeight - s) / 2, s, s, 0, 0, 256, 256);
+    const url = await upload(await new Promise(r => c.toBlob(r, 'image/jpeg', .85)));
+    if (await saveProfile(profile?.nickname || nickname || '车友', url)) { toast('头像已更新'); currentPage = null; render(); }
+  } catch (e) { toast(e.message || '上传失败'); }
+}
+function userPage() {
+  const id = decodeURIComponent(location.hash.split('/')[2] || '');
+  const list = CARS.filter(c => (c.byId || c.by) === id);
+  if (!list.length) { app.innerHTML = `<section class="wrap lib-head page-enter"><h1>车友车库</h1><p>没有找到这位车友的投稿。</p></section>`; return; }
+  const latest = list[0];
+  const isMe = list.some(c => myCars.has(c.id));
+  app.innerHTML = profileHead({ avatar: latest.avatar, name: latest.by, sub: isMe ? '这是你的车库 · <a href="#/me" style="color:var(--accent)">去我的主页</a>' : `最近投稿 ${fmtDate(latest.time)}`, stats: statsOf(list) }) + `
+  ${isAdmin && !isMe ? `<section class="wrap"><div class="admin-bar"><span>管理员：把这位车友小程序时代的车壳认领到当前设备（只对还没有设备归属的车壳生效）。</span><button class="btn small secondary" id="claimBtn">认领到这台设备</button></div></section>` : ''}
+  <section class="wrap me-section"><div class="section-head"><div><h2>TA 的车壳</h2></div></div><div class="grid">${list.map(card).join('')}</div></section>`;
+  const cb = $('#claimBtn');
+  if (cb) cb.onclick = async () => {
+    if (!confirm(`把「${latest.by}」名下的车壳归到这台设备？之后可在「我的」里管理它们。`)) return;
+    const { data, error } = await sb.rpc('cs_claim', { p_by_id: id, p_token: TOKEN });
+    if (error) return toast(error.message);
+    toast(`已认领 ${data} 款`); loadRemote().then(() => { location.hash = '#/me'; });
+  };
 }
 
 /* ---------- submit (投稿) ---------- */
@@ -814,7 +901,7 @@ function route() {
   const [name, arg] = h.split('/');
   return { name: name || 'home', arg };
 }
-const PAGES = { home, library, rank, setup, saved: savedPage, compare: comparePage, submit: submitPage };
+const PAGES = { home, library, rank, setup, saved: savedPage, compare: comparePage, submit: submitPage, me: mePage, u: userPage };
 function render() {
   const r = route();
   if (r.name === 'car') {
