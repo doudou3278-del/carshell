@@ -3,7 +3,10 @@
 const DATA = window.DOU_DATA;
 const CARS = DATA.cars;
 const BY_ID = new Map(CARS.map(c => [c.id, c]));
-const COMMENTS = DATA.comments.filter(c => BY_ID.has(c.car));
+let COMMENTS = DATA.comments.filter(c => BY_ID.has(c.car));
+const CFG = window.DOU_CONFIG || {};
+const sb = (window.supabase && CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY) ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : null;
+let remote = false, isAdmin = false;
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $('#app');
@@ -16,6 +19,9 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let saved = new Set(store.get('saved', []));
 let liked = new Set(store.get('liked', []));
 let compare = store.get('compare', []).filter(id => BY_ID.has(id));
+const TOKEN = store.get('token', null) || (() => { const t = [...crypto.getRandomValues(new Uint8Array(20))].map(b => b.toString(16).padStart(2, '0')).join(''); store.set('token', t); return t; })();
+let myComments = new Set(store.get('myComments', []));
+let nickname = store.get('nick', '');
 
 /* ---------- icons ---------- */
 const I = {
@@ -44,7 +50,7 @@ function count(list, key) {
   const m = new Map(); list.forEach(c => m.set(c[key], (m.get(c[key]) || 0) + 1));
   return [...m.entries()].sort((a, b) => (a[0] === '其他') - (b[0] === '其他') || b[1] - a[1]);
 }
-const likeCount = c => c.likes + (liked.has(c.id) ? 1 : 0);
+const likeCount = c => c.likes + (!remote && liked.has(c.id) ? 1 : 0);
 function fmtDate(ms) { if (!ms) return ''; const d = new Date(ms); return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`; }
 function ago(ms) {
   if (!ms) return ''; const s = (Date.now() - ms) / 1000;
@@ -368,7 +374,6 @@ function openDetail(id) {
   const c = BY_ID.get(id); if (!c) { toast('这款车壳不存在'); return closeDetail(); }
   const imgs = [c.cover, c.finished, c.scan, ...c.parts].filter(Boolean);
   const labels = [['封面', c.cover], ['成品照片', c.finished], ['宽体扫描图', c.scan]].filter(x => x[1]).map(x => x[0]).concat(c.parts.map((_, i) => `板件 ${i + 1}`));
-  const cm = COMMENTS.filter(x => x.car === id);
   const related = CARS.filter(x => x.id !== id && (x.model === c.model && c.model !== '其他' || (x.wb && c.wb && Math.abs(x.wb - c.wb) <= 2))).slice(0, 10);
   $('#sheetBody').innerHTML = `
     <div class="d-hero"><div class="d-gallery" id="gallery">${imgs.map((s, i) => `<figure data-lb="${i}"><img src="${esc(s)}" alt="${esc(c.name)} ${labels[i]}" ${i ? 'loading="lazy"' : ''}><figcaption><span class="pill glass">${labels[i]}</span></figcaption></figure>`).join('')}</div>
@@ -381,6 +386,7 @@ function openDetail(id) {
           <button class="btn secondary ${saved.has(id) ? 'saved' : ''}" data-save="${esc(id)}">${I.bookmark}<span>${saved.has(id) ? '已收藏' : '收藏'}</span></button>
           <button class="btn secondary" data-compare="${esc(id)}">${I.compare}<span>${compare.includes(id) ? '已在对比' : '加入对比'}</span></button>
           <button class="btn secondary" data-share="${esc(id)}" aria-label="复制链接">${I.share}</button>
+          ${isAdmin ? `<button class="btn secondary admin-only" data-hide-car="${esc(id)}">隐藏车壳</button>` : ''}
         </div></div>
       <div class="d-specs">
         <div><b>${dim(c.wb)}<small>mm</small></b><span>轴距</span></div><div><b>${dim(c.ft)}<small>mm</small></b><span>前轮距</span></div>
@@ -395,7 +401,9 @@ function openDetail(id) {
           ${c.wideLink ? `<div><h3 style="font-size:17px;margin-bottom:8px">宽体套件来源</h3><div class="linkrow" style="background:var(--card2)"><span>${esc(c.wideLink)}</span><button class="btn small secondary" data-copy="${esc(c.wideLink)}">复制</button></div></div>` : ''}
         </div>
       </div>
-      ${cm.length ? `<div class="d-section"><h3>车友评论 <span class="muted" style="font-size:17px;font-weight:500">${cm.length}</span></h3><div class="comments">${cm.map(x => `<div class="comment">${x.avatar ? `<img src="${esc(x.avatar)}" alt="" loading="lazy">` : `<span class="av">${esc(x.by.slice(0, 1))}</span>`}<div class="comment-bubble"><small><b class="${x.admin ? 'tag-admin' : ''}">${esc(x.by)}${x.admin ? ' · 管理员' : ''}</b>${ago(x.time)}</small><p>${esc(x.text)}</p></div></div>`).join('')}</div></div>` : ''}
+      <div class="d-section" id="commentsBox"><h3>车友评论 <span class="muted" id="cmCount" style="font-size:17px;font-weight:500"></span></h3>
+        ${sb ? `<form class="composer" id="composer"><input id="cmNick" maxlength="20" placeholder="昵称" value="${esc(nickname)}" aria-label="昵称" required><div class="composer-row"><textarea id="cmText" maxlength="300" rows="1" placeholder="说点什么…" aria-label="评论内容" required></textarea><button class="btn primary small" type="submit">发送</button></div></form>` : ''}
+        <div class="comments" id="cmList"></div></div>
       ${related.length ? `<div class="d-section"><h3>尺寸相近 / 同车型</h3><div class="shelf related" style="padding-left:0;margin-left:0">${related.map(card).join('')}</div></div>` : ''}
     </div>`;
   sheet.classList.add('open'); sheet.setAttribute('aria-hidden', 'false'); document.body.classList.add('locked'); sheetOpen = true;
@@ -404,6 +412,10 @@ function openDetail(id) {
   gal.addEventListener('scroll', () => { const i = Math.round(gal.scrollLeft / gal.clientWidth); dots.forEach((d, j) => d.classList.toggle('on', i === j)); }, { passive: true });
   gal.addEventListener('click', e => { const f = e.target.closest('[data-lb]'); if (f) openLightbox(imgs, +f.dataset.lb); });
   $('.sheet', sheet).focus({ preventScroll: true });
+  renderComments(id, COMMENTS.filter(x => x.car === id));
+  loadComments(id);
+  bindComposer(id);
+  if (remote && !viewed.has(id)) { viewed.add(id); sb.rpc('cs_view', { p_car: id }).then(() => {}); }
 }
 function closeDetail() {
   if (!sheetOpen) return;
@@ -490,11 +502,21 @@ document.addEventListener('click', e => {
   const save = e.target.closest('[data-save]'); if (save) { e.preventDefault(); e.stopPropagation(); return toggleSave(save.dataset.save, save); }
   const like = e.target.closest('[data-like]');
   if (like) {
-    const id = like.dataset.like; liked.has(id) ? liked.delete(id) : liked.add(id); store.set('liked', [...liked]);
-    like.classList.toggle('liked', liked.has(id)); $('span', like).textContent = likeCount(BY_ID.get(id));
+    const id = like.dataset.like, car = BY_ID.get(id);
+    if (remote) {
+      const was = liked.has(id); was ? liked.delete(id) : liked.add(id); car.likes += was ? -1 : 1;
+      sb.rpc('cs_toggle_like', { p_car: id, p_token: TOKEN }).then(({ data, error }) => {
+        if (error) { was ? liked.add(id) : liked.delete(id); car.likes += was ? 1 : -1; toast('点赞失败，请重试'); }
+        else { data.liked ? liked.add(id) : liked.delete(id); car.likes = data.count; }
+        like.classList.toggle('liked', liked.has(id)); $('span', like).textContent = likeCount(car);
+      });
+    } else { liked.has(id) ? liked.delete(id) : liked.add(id); store.set('liked', [...liked]); }
+    like.classList.toggle('liked', liked.has(id)); $('span', like).textContent = likeCount(car);
     like.animate?.([{ transform: 'scale(1)' }, { transform: 'scale(1.15)' }, { transform: 'scale(1)' }], { duration: 400, easing: 'cubic-bezier(.34,1.56,.64,1)' });
     return;
   }
+  const del = e.target.closest('[data-del-comment]'); if (del) return deleteComment(del.dataset.delComment, del);
+  const hide = e.target.closest('[data-hide-car]'); if (hide) return hideCar(hide.dataset.hideCar);
   const cmp = e.target.closest('[data-compare]'); if (cmp) return toggleCompare(cmp.dataset.compare);
   const un = e.target.closest('[data-uncompare]'); if (un) { toggleCompare(un.dataset.uncompare); return comparePage(); }
   const bd = e.target.closest('[data-board]'); if (bd) { closeDetail(); return loadCarToBoard(BY_ID.get(bd.dataset.board)); }
@@ -548,6 +570,120 @@ addEventListener('scroll', () => $('#nav').classList.toggle('scrolled', scrollY 
 addEventListener('resize', () => { drawBoard(); moveSeg($('#sortSeg')); });
 document.addEventListener('fullscreenchange', () => setTimeout(drawBoard, 60));
 
+/* ---------- Supabase ---------- */
+const viewed = new Set();
+const fromRow = r => ({
+  id: r.id, name: r.name, brand: r.brand, model: r.model, scale: r.scale, wide: r.wide, wideLink: r.wide_link,
+  len: num(r.len), wb: num(r.wb), ft: num(r.ft), rt: num(r.rt), cover: r.cover, thumb: r.thumb || r.cover, ratio: +r.ratio || 1.33,
+  finished: r.finished, scan: r.scan, parts: r.parts || [], note: r.note, by: r.by_name, byId: r.by_id, avatar: r.avatar,
+  views: r.views, likes: r.like_count, week: r.week, weekKey: r.week_key, time: +r.created_ms, comments: 0, status: r.status
+});
+function num(v) { return v == null ? null : +v; }
+async function loadRemote() {
+  if (!sb) return;
+  try {
+    const [{ data: rows, error }, mine, sess] = await Promise.all([
+      sb.from('cs_cars').select('*').order('created_ms', { ascending: false }).limit(2000),
+      sb.rpc('cs_my_likes', { p_token: TOKEN }),
+      sb.auth.getSession()
+    ]);
+    if (error || !rows || !rows.length) throw error || new Error('empty');
+    CARS.length = 0; BY_ID.clear();
+    rows.map(fromRow).forEach(c => { CARS.push(c); BY_ID.set(c.id, c); });
+    liked = new Set(mine.data || []);
+    remote = true;
+    await checkAdmin(sess.data.session);
+    footMeta();
+    const r = route();
+    currentPage = null;
+    if (r.name === 'car') { renderPage((lastPage.replace(/^#\/?/, '').split(/[?/]/)[0]) || 'home'); openDetail(decodeURIComponent(r.arg || '')); }
+    else render();
+  } catch (e) { console.warn('Supabase unavailable, using snapshot', e); }
+}
+async function checkAdmin(session) {
+  isAdmin = false;
+  if (session) { const { data } = await sb.rpc('is_admin'); isAdmin = !!data; }
+  document.body.classList.toggle('admin', isAdmin);
+  $('#adminLink').textContent = isAdmin ? '退出管理' : '管理员';
+}
+function renderComments(id, list) {
+  const box = $('#cmList'); if (!box) return;
+  $('#cmCount').textContent = list.length || '';
+  box.innerHTML = list.length ? list.map(x => {
+    const canDel = remote && x.uid && (isAdmin || myComments.has(x.uid));
+    return `<div class="comment" data-cid="${esc(x.uid || '')}">${x.avatar ? `<img src="${esc(x.avatar)}" alt="" loading="lazy">` : `<span class="av">${esc((x.by || '?').slice(0, 1))}</span>`}<div class="comment-bubble"><small><b class="${x.admin ? 'tag-admin' : ''}">${esc(x.by)}${x.admin ? ' · 管理员' : ''}</b>${ago(x.time)}${canDel ? `<button class="cm-del" data-del-comment="${esc(x.uid)}">删除</button>` : ''}</small><p>${esc(x.text)}</p></div></div>`;
+  }).join('') : `<p class="muted" style="font-size:15px">${sb ? '还没有评论，来说第一句吧。' : '还没有评论。'}</p>`;
+}
+async function loadComments(id) {
+  if (!remote) return;
+  const { data, error } = await sb.from('cs_comments').select('id,car_id,content,nickname,avatar,is_admin,created_at').eq('car_id', id).order('created_at').limit(500);
+  if (error || !sheetOpen) return;
+  renderComments(id, data.map(r => ({ uid: r.id, car: r.car_id, text: r.content, by: r.nickname, avatar: r.avatar, admin: r.is_admin, time: Date.parse(r.created_at) })));
+}
+function bindComposer(id) {
+  const f = $('#composer'); if (!f) return;
+  const ta = $('#cmText');
+  ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(160, ta.scrollHeight) + 'px'; });
+  f.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!remote) return toast('评论服务暂时不可用');
+    const nick = $('#cmNick').value.trim(), text = ta.value.trim();
+    if (!nick) return $('#cmNick').focus();
+    if (!text) return ta.focus();
+    const btn = $('button[type=submit]', f); btn.disabled = true;
+    const { data, error } = await sb.rpc('cs_add_comment', { p_car: id, p_content: text, p_nickname: nick, p_token: TOKEN });
+    btn.disabled = false;
+    if (error) return toast(error.message || '发送失败');
+    nickname = nick; store.set('nick', nick);
+    myComments.add(data.id); store.set('myComments', [...myComments]);
+    ta.value = ''; ta.style.height = 'auto';
+    toast('评论已发布');
+    loadComments(id);
+  });
+}
+async function deleteComment(cid, btn) {
+  if (!confirm('删除这条评论？')) return;
+  btn.disabled = true;
+  const { data, error } = await sb.rpc('cs_delete_comment', { p_id: cid, p_token: TOKEN });
+  if (error || !data) { btn.disabled = false; return toast('删除失败'); }
+  myComments.delete(cid); store.set('myComments', [...myComments]);
+  $(`[data-cid="${CSS.escape(cid)}"]`)?.remove();
+  const n = $$('#cmList .comment').length; $('#cmCount').textContent = n || '';
+  toast('已删除');
+}
+async function hideCar(id) {
+  if (!isAdmin || !confirm('从网站上隐藏这款车壳？（可在 Supabase 表里把 status 改回 active 恢复）')) return;
+  const { error } = await sb.from('cs_cars').update({ status: 'hidden' }).eq('id', id);
+  if (error) return toast('操作失败');
+  const i = CARS.findIndex(c => c.id === id); if (i >= 0) CARS.splice(i, 1); BY_ID.delete(id);
+  closeDetail(); currentPage = null; render(); toast('已隐藏');
+}
+function adminLogin() {
+  if (isAdmin) { sb.auth.signOut().then(() => { checkAdmin(null); toast('已退出管理'); }); return; }
+  if (!sb) return toast('未连接数据库');
+  const el = document.createElement('div'); el.className = 'cal';
+  el.innerHTML = `<form class="login-card" id="loginForm"><h2>管理员登录</h2><p class="muted">登录后可删除任何评论、隐藏车壳。</p>
+    <input type="email" id="lEmail" placeholder="邮箱" autocomplete="username" required><input type="password" id="lPass" placeholder="密码" autocomplete="current-password" required>
+    <p class="login-err" id="lErr"></p><div style="display:flex;gap:10px"><button type="button" class="btn secondary" id="lCancel">取消</button><button class="btn primary" type="submit">登录</button></div></form>`;
+  document.body.appendChild(el);
+  const close = () => el.remove();
+  $('#lCancel', el).onclick = close;
+  $('#loginForm', el).onsubmit = async e => {
+    e.preventDefault();
+    const { data, error } = await sb.auth.signInWithPassword({ email: $('#lEmail', el).value.trim(), password: $('#lPass', el).value });
+    if (error) { $('#lErr', el).textContent = '登录失败：' + error.message; return; }
+    await checkAdmin(data.session);
+    if (!isAdmin) { $('#lErr', el).textContent = '这个账号还不是管理员'; await sb.auth.signOut(); return; }
+    close(); toast('已进入管理模式'); if (sheetOpen) loadComments(route().arg);
+  };
+}
+function footMeta() {
+  $('#footMeta').innerHTML = remote
+    ? `${CARS.length} 款车壳 · 数据实时来自车友 · <button id="adminLink" class="link-btn">${isAdmin ? '退出管理' : '管理员'}</button>`
+    : `数据迁移自「头蚊字 Dou」小程序 · 快照 ${fmtDate(DATA.exportedAt)} · 共 ${CARS.length} 款车壳 · <button id="adminLink" class="link-btn">管理员</button>`;
+  $('#adminLink').onclick = adminLogin;
+}
+
 /* ---------- router ---------- */
 let lastPage = '#/', currentPage = null;
 function route() {
@@ -578,7 +714,8 @@ function renderPage(name) {
 }
 function updateNav(name) { $$('[data-nav]').forEach(a => a.classList.toggle('on', a.dataset.nav === name)); }
 addEventListener('hashchange', render);
-$('#footMeta').textContent = `数据迁移自「头蚊字 Dou」小程序 · 快照时间 ${fmtDate(DATA.exportedAt)} · 共 ${CARS.length} 款车壳、${COMMENTS.length} 条评论`;
+footMeta();
 updateBadge();
 render();
+loadRemote();
 })();
