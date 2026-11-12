@@ -477,3 +477,12 @@ svg text{stroke:none}
 a.d-by{transition:color .2s}
 a.d-by:hover b{color:var(--accent)}
 .d-by .av{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:#2a2a2c;font-size:13px}
+/* ---------- WeChat login ---------- */
+.profile-actions{display:flex;gap:8px;flex-wrap:wrap}
+.wx-btn{background:#07c160;color:#fff}
+.wx-btn:hover{background:#0ad06c}
+.wx-ico{fill:currentColor;stroke:none;font-size:16px}
+.wx-card{gap:14px}
+.wx-badge{width:52px;height:52px;border-radius:16px;background:#07c160;color:#fff;display:grid;place-items:center;font-size:28px}
+.wx-steps{padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--muted)}
+.wx-steps b{color:var(--text);font-weight:600}

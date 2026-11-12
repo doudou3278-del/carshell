@@ -19,11 +19,12 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let saved = new Set(store.get('saved', []));
 let liked = new Set(store.get('liked', []));
 let compare = store.get('compare', []).filter(id => BY_ID.has(id));
-const TOKEN = store.get('token', null) || (() => { const t = [...crypto.getRandomValues(new Uint8Array(20))].map(b => b.toString(16).padStart(2, '0')).join(''); store.set('token', t); return t; })();
+let TOKEN = store.get('token', null) || (() => { const t = [...crypto.getRandomValues(new Uint8Array(20))].map(b => b.toString(16).padStart(2, '0')).join(''); store.set('token', t); return t; })();
 let myComments = new Set(store.get('myComments', []));
 let nickname = store.get('nick', '');
 let myCars = new Set();
 let profile = store.get('profile', null); // {public_id, nickname, avatar}
+let wxLogged = store.get('wx', false);
 if (profile?.nickname && !nickname) nickname = profile.nickname;
 const COLS = 'id,name,brand,model,scale,wide,wide_link,len,wb,ft,rt,cover,thumb,ratio,finished,scan,parts,note,by_name,by_id,avatar,views,base_likes,like_count,week,week_key,created_ms,status';
 const BRANDS = ['田宫', '青岛社', '长谷川', '富士美', '京商', '其他'];
@@ -708,7 +709,7 @@ function profileHead({ avatar, name, sub, stats, editable }) {
     <div class="profile-top">
       <button class="profile-avatar ${editable ? 'editable' : ''}" ${editable ? 'id="avatarBtn" aria-label="更换头像"' : 'tabindex="-1"'}>${avatarHtml(avatar, name)}${editable ? '<i>更换</i>' : ''}</button>
       <div class="profile-name"><p class="eyebrow">${editable ? 'DOU / PROFILE' : 'GARAGE'}</p><h1>${esc(name)}</h1><p class="muted">${sub}</p></div>
-      ${editable ? '<button class="btn secondary small" id="editName">编辑昵称</button>' : ''}
+      ${editable ? `<div class="profile-actions"><button class="btn secondary small" id="editName">编辑昵称</button>${wxLogged ? '<button class="btn small secondary" id="wxLogout">退出微信登录</button>' : `<button class="btn small wx-btn" id="wxLoginBtn">${WX_ICON} 微信登录</button>`}</div>` : ''}
     </div>
     <div class="profile-stats"><div><b>${stats.n}</b><span>投稿</span></div><div><b>${stats.likes}</b><span>获赞</span></div><div><b>${stats.views}</b><span>浏览</span></div></div>
   </div></section>`;
@@ -719,7 +720,7 @@ function mePage() {
   const likedList = remote ? CARS.filter(c => liked.has(c.id)) : [];
   const name = profile?.nickname || nickname || '车友';
   app.innerHTML = profileHead({ avatar: profile?.avatar, name, editable: !!sb,
-      sub: remote ? (profile?.nickname ? '这台设备上的车库。换设备或清理浏览器数据后会变成新身份。' : '设置昵称和头像，评论和投稿都会带上。') : '连接服务器后可设置昵称和头像。',
+      sub: wxLogged ? '已用微信登录 · 小程序里的车壳和评论都在这里，换设备再登录一次就能同步。' : remote ? (profile?.nickname ? '这台设备上的车库。换设备或清理浏览器数据后会变成新身份。' : '设置昵称和头像，评论和投稿都会带上。') : '连接服务器后可设置昵称和头像。',
       stats: statsOf(mine) }) + `
   <section class="wrap"><a class="publish-card reveal" href="#/submit"><div><b>发布车壳</b><span>记录作品与实测尺寸</span></div><i>＋</i></a></section>
   <section class="wrap me-section reveal"><div class="section-head"><div><h2>我的投稿</h2></div></div>
@@ -731,6 +732,8 @@ function mePage() {
   <section class="wrap me-section reveal"><div class="section-head"><div><h2>我的评论</h2></div></div><div id="myComments" class="my-comments"><p class="muted">加载中…</p></div></section>` : ''}`;
   if (!sb) return;
   $('#editName').onclick = () => editProfile();
+  if ($('#wxLoginBtn')) $('#wxLoginBtn').onclick = () => wxLoginDialog();
+  if ($('#wxLogout')) $('#wxLogout').onclick = wxLogout;
   $('#avatarBtn').onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = () => i.files[0] && saveAvatar(i.files[0]); i.click(); };
   if (remote) sb.rpc('cs_my_comments', { p_token: TOKEN }).then(({ data }) => {
     const box = $('#myComments'); if (!box) return;
@@ -778,6 +781,57 @@ function userPage() {
     if (error) return toast(error.message);
     toast(`已认领 ${data} 款`); loadRemote().then(() => { location.hash = '#/me'; });
   };
+}
+
+/* ---------- WeChat login (via the mini program's one-time wx.login code) ---------- */
+const WX_ICON = '<svg viewBox="0 0 24 24" class="wx-ico"><path d="M9 4C5 4 2 6.7 2 10c0 1.9 1 3.6 2.6 4.7L4 17l2.6-1.3c.8.2 1.6.3 2.4.3h.4A5.6 5.6 0 0 1 9 14c0-3.3 3.1-6 7-6h.4C15.6 5.7 12.6 4 9 4z"/><path d="M22 14c0-2.8-2.7-5-6-5s-6 2.2-6 5 2.7 5 6 5c.7 0 1.3-.1 1.9-.3L20 20l-.5-2c1.5-1 2.5-2.4 2.5-4z"/></svg>';
+function parseWxCode(text) {
+  const t = String(text || '').trim(), m = t.match(/#\/wx\/([A-Za-z0-9_-]{10,128})/);
+  return m ? m[1] : (/^[A-Za-z0-9_-]{10,128}$/.test(t) ? t : '');
+}
+async function wxLogin(code) {
+  if (!sb) throw new Error('服务器暂时连不上');
+  const r = await fetch(CFG.SUPABASE_URL + '/functions/v1/wx-login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', apikey: CFG.SUPABASE_ANON_KEY },
+    body: JSON.stringify({ code, token: TOKEN })
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || !data.token) throw new Error(data.error || '登录失败，请重试');
+  TOKEN = data.token; store.set('token', TOKEN); store.set('wx', true); wxLogged = true;
+  profile = data.profile; store.set('profile', profile); if (profile?.nickname) { nickname = profile.nickname; store.set('nick', nickname); }
+  store.set('myComments', []); myComments = new Set();
+  return data.profile;
+}
+function wxLoginDialog() {
+  const el = document.createElement('div'); el.className = 'cal';
+  el.innerHTML = `<form class="login-card wx-card"><div class="wx-badge">${WX_ICON}</div><h2>微信登录</h2>
+    <ol class="wx-steps"><li>在微信里打开小程序 <b>「头蚊字 Dou」</b></li><li>点 <b>「登录网站」</b>，会复制一条登录链接</li><li>手机上：直接在浏览器打开这条链接<br>电脑上：发到「文件传输助手」后点开，或粘贴到下面</li></ol>
+    <input id="wxCode" placeholder="粘贴登录链接" autocomplete="off"><p class="login-err" id="wxErr"></p>
+    <div style="display:flex;gap:10px"><button type="button" class="btn secondary" id="wxCancel">取消</button><button class="btn primary" type="submit" id="wxGo">登录</button></div>
+    <p class="muted" style="font-size:12px">登录后，你在小程序上传过的车壳和评论会自动回到你名下；这台设备之前的收藏、点赞、投稿也会一起合并。</p></form>`;
+  document.body.appendChild(el);
+  const inp = $('#wxCode', el); setTimeout(() => inp.focus(), 50);
+  $('#wxCancel', el).onclick = () => el.remove();
+  $('form', el).onsubmit = async e => {
+    e.preventDefault();
+    const code = parseWxCode(inp.value); if (!code) { $('#wxErr', el).textContent = '没认出登录链接，请重新复制'; return; }
+    const btn = $('#wxGo', el); btn.disabled = true; btn.textContent = '登录中…';
+    try { const p = await wxLogin(code); el.remove(); afterWxLogin(p); }
+    catch (ex) { $('#wxErr', el).textContent = ex.message; btn.disabled = false; btn.textContent = '登录'; }
+  };
+}
+function afterWxLogin(p) {
+  const extra = (p?.claimed_cars || p?.claimed_comments) ? `，找回 ${p.claimed_cars} 款车壳、${p.claimed_comments} 条评论` : '';
+  toast(`欢迎回来，${p?.nickname || '车友'}${extra}`);
+  history.replaceState(null, '', '#/me'); lastPage = '#/me'; currentPage = null;
+  loadRemote().then(() => { if (route().name !== 'me') location.hash = '#/me'; });
+}
+function wxLogout() {
+  if (!confirm('退出微信登录？这台设备会变回一个新的匿名身份。')) return;
+  TOKEN = [...crypto.getRandomValues(new Uint8Array(20))].map(b => b.toString(16).padStart(2, '0')).join('');
+  store.set('token', TOKEN); store.set('wx', false); wxLogged = false;
+  profile = null; store.set('profile', null); store.set('myComments', []); myComments = new Set(); myCars = new Set(); liked = new Set();
+  toast('已退出'); currentPage = null; loadRemote().then(render);
 }
 
 /* ---------- submit (投稿) ---------- */
@@ -904,6 +958,16 @@ function route() {
 const PAGES = { home, library, rank, setup, saved: savedPage, compare: comparePage, submit: submitPage, me: mePage, u: userPage };
 function render() {
   const r = route();
+  if (r.name === 'wx') {
+    const code = parseWxCode(location.hash);
+    history.replaceState(null, '', '#/me'); lastPage = '#/me';
+    renderPage('me'); currentPage = '#/me';
+    if (!code) { toast('登录链接无效'); return; }
+    toast('正在用微信登录…');
+    const go = () => wxLogin(code).then(afterWxLogin, ex => { toast(ex.message); });
+    sb ? go() : toast('服务器暂时连不上');
+    return;
+  }
   if (r.name === 'car') {
     if (!currentPage) renderPage((lastPage.replace(/^#\/?/, '').split(/[?/]/)[0]) || 'home');
     openDetail(decodeURIComponent(r.arg || ''));
