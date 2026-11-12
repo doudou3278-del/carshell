@@ -3,5 +3,5 @@
 // Never put a secret / service_role key here.
 window.DOU_CONFIG = {
   SUPABASE_URL: 'https://bdsbkjkgysrnwusbbxax.supabase.co',
-  SUPABASE_ANON_KEY: ''
+  SUPABASE_ANON_KEY: 'sb_publishable_Ti2My7Rpx5gRWsZbfmq9NQ_sYefDqWL'
 };
