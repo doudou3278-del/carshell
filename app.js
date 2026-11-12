@@ -792,7 +792,7 @@ function parseWxCode(text) {
 async function wxLogin(code) {
   if (!sb) throw new Error('服务器暂时连不上');
   const r = await fetch(CFG.SUPABASE_URL + '/functions/v1/wx-login', {
-    method: 'POST', headers: { 'Content-Type': 'application/json', apikey: CFG.SUPABASE_ANON_KEY },
+    method: 'POST', headers: { 'Content-Type': 'application/json', apikey: CFG.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + (CFG.FUNCTIONS_JWT || CFG.SUPABASE_ANON_KEY) },
     body: JSON.stringify({ code, token: TOKEN })
   });
   const data = await r.json().catch(() => ({}));

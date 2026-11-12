@@ -3,7 +3,7 @@
 // then returns that WeChat user's site token (same token on every device) and merges this
 // device's previous activity + the mini-program-era cars/comments into the account.
 //
-// Secrets (Edge Functions → Secrets): WX_APPID, WX_SECRET. Deploy with "Verify JWT" OFF.
+// Secrets (Edge Functions → Secrets): WX_APPID, WX_SECRET. Keep "Verify JWT" ON; the site sends the public anon JWT (config.js FUNCTIONS_JWT).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const APPID = Deno.env.get('WX_APPID') ?? '';
