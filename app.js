@@ -22,6 +22,12 @@ let compare = store.get('compare', []).filter(id => BY_ID.has(id));
 const TOKEN = store.get('token', null) || (() => { const t = [...crypto.getRandomValues(new Uint8Array(20))].map(b => b.toString(16).padStart(2, '0')).join(''); store.set('token', t); return t; })();
 let myComments = new Set(store.get('myComments', []));
 let nickname = store.get('nick', '');
+let myCars = new Set();
+const COLS = 'id,name,brand,model,scale,wide,wide_link,len,wb,ft,rt,cover,thumb,ratio,finished,scan,parts,note,by_name,by_id,avatar,views,base_likes,like_count,week,week_key,created_ms,status';
+const BRANDS = ['田宫', '青岛社', '长谷川', '富士美', '京商', '其他'];
+const MODEL_RULES = [['RX-7', 'rx[ -]?7|fd3s|fc3s'], ['Supra', 'supra|苏普拉|牛魔王'], ['GT-R', 'gt[ -]?r|skyline|斯凯莱茵|(^|[^a-z0-9])r3[2345]([^a-z0-9]|$)'], ['86/BRZ', 'gt[ -]?86|gr[ -]?86|brz|(^|[^a-z0-9])86([^a-z0-9]|$)'], ['AE86', 'ae[ -]?86|豆腐店|trueno|levin'], ['Silvia', 'silvia|西尔维娅|180[ -]?sx|240[ -]?sx|(^|[^a-z0-9])s1[345]([^a-z0-9]|$)'], ['Fairlady Z', 'fairlady|350[ -]?z|370[ -]?z|400[ -]?z|(^|[^a-z0-9])z3[234]([^a-z0-9]|$)'], ['Lancer Evo', 'lancer|evolution|(^|[^a-z])evo([^a-z]|$)|蓝瑟'], ['Impreza', 'impreza|wrx|翼豹'], ['NSX', 'nsx'], ['MX-5', 'mx[ -]?5|miata|马自达小跑'], ['S2000', 's[ -]?2000'], ['Civic', 'civic|思域']];
+const MODEL_NAMES = MODEL_RULES.map(r => r[0]).concat('其他');
+function inferModel(name) { for (const i of [4, 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12]) if (new RegExp(MODEL_RULES[i][1], 'i').test(name || '')) return MODEL_RULES[i][0]; return '其他'; }
 
 /* ---------- icons ---------- */
 const I = {
@@ -108,7 +114,7 @@ function home() {
     <p class="eyebrow reveal">1/28 RC 车壳尺寸库</p>
     <h1 class="reveal"><span class="grad">每一毫米，</span><br>都有车友量过。</h1>
     <p class="lead reveal">轴距、轮距、车身长度与实拍图。挑壳、对比、上调车板，一站完成。</p>
-    <div class="hero-cta reveal"><a class="btn primary" href="#/library">浏览车壳库</a><a class="btn ghost" href="#/setup">打开电子调车板 ${I.arrow}</a></div>
+    <div class="hero-cta reveal"><a class="btn primary" href="#/library">浏览车壳库</a><a class="btn secondary" href="#/submit">投稿车壳</a><a class="btn ghost" href="#/setup">打开电子调车板 ${I.arrow}</a></div>
     <div class="stats reveal">
       <div class="stat"><b data-count="${CARS.length}">0</b><span>款实测车壳</span></div>
       <div class="stat"><b data-count="${contributors}">0</b><span>位车友贡献</span></div>
@@ -158,7 +164,7 @@ function library() {
   lib = { q: q.q || '', brand: q.brand || '全部', model: q.model || '全部', sort: q.sort || 'time', wide: q.wide === '1', ranges: {}, showRanges: false };
   const brandList = [['全部', CARS.length], ...brands()];
   app.innerHTML = `
-  <section class="wrap lib-head page-enter"><h1>车壳库</h1><p>${CARS.length} 款车壳，全部由车友实测。</p></section>
+  <section class="wrap lib-head page-enter lib-head-row"><div><h1>车壳库</h1><p>${CARS.length} 款车壳，全部由车友实测。</p></div><a class="btn primary" href="#/submit">＋ 投稿</a></section>
   <div class="toolbar"><div class="wrap">
     <div class="toolbar-row">
       <label class="search">${I.search}<input id="libSearch" type="search" placeholder="搜索名称、品牌或上传者" value="${esc(lib.q)}" aria-label="搜索车壳"></label>
@@ -387,6 +393,7 @@ function openDetail(id) {
           <button class="btn secondary" data-compare="${esc(id)}">${I.compare}<span>${compare.includes(id) ? '已在对比' : '加入对比'}</span></button>
           <button class="btn secondary" data-share="${esc(id)}" aria-label="复制链接">${I.share}</button>
           ${isAdmin ? `<button class="btn secondary admin-only" data-hide-car="${esc(id)}">隐藏车壳</button>` : ''}
+          ${remote && (myCars.has(id) || isAdmin) ? `<button class="btn secondary danger" data-del-car="${esc(id)}">删除${isAdmin && !myCars.has(id) ? '车壳' : '我的投稿'}</button>` : ''}
         </div></div>
       <div class="d-specs">
         <div><b>${dim(c.wb)}<small>mm</small></b><span>轴距</span></div><div><b>${dim(c.ft)}<small>mm</small></b><span>前轮距</span></div>
@@ -516,6 +523,7 @@ document.addEventListener('click', e => {
     return;
   }
   const del = e.target.closest('[data-del-comment]'); if (del) return deleteComment(del.dataset.delComment, del);
+  const dc = e.target.closest('[data-del-car]'); if (dc) return deleteCar(dc.dataset.delCar);
   const hide = e.target.closest('[data-hide-car]'); if (hide) return hideCar(hide.dataset.hideCar);
   const cmp = e.target.closest('[data-compare]'); if (cmp) return toggleCompare(cmp.dataset.compare);
   const un = e.target.closest('[data-uncompare]'); if (un) { toggleCompare(un.dataset.uncompare); return comparePage(); }
@@ -583,9 +591,10 @@ async function loadRemote() {
   if (!sb) return;
   try {
     const [{ data: rows, error }, mine, sess] = await Promise.all([
-      sb.from('cs_cars').select('*').order('created_ms', { ascending: false }).limit(2000),
+      sb.from('cs_cars').select(COLS).order('created_ms', { ascending: false }).limit(2000),
       sb.rpc('cs_my_likes', { p_token: TOKEN }),
-      sb.auth.getSession()
+      sb.auth.getSession(),
+      sb.rpc('cs_my_cars', { p_token: TOKEN }).then(r => { myCars = new Set(r.data || []); })
     ]);
     if (error || !rows || !rows.length) throw error || new Error('empty');
     CARS.length = 0; BY_ID.clear();
@@ -684,6 +693,120 @@ function footMeta() {
   $('#adminLink').onclick = adminLogin;
 }
 
+/* ---------- submit (投稿) ---------- */
+async function deleteCar(id) {
+  if (!confirm('删除这款车壳？删除后无法恢复。')) return;
+  const { data, error } = await sb.rpc('cs_delete_car', { p_id: id, p_token: TOKEN });
+  if (error || !data) return toast('删除失败');
+  const i = CARS.findIndex(c => c.id === id); if (i >= 0) CARS.splice(i, 1); BY_ID.delete(id); myCars.delete(id);
+  closeDetail(); currentPage = null; render(); toast('已删除');
+}
+function loadImage(file) {
+  return new Promise((res, rej) => { const url = URL.createObjectURL(file), im = new Image(); im.onload = () => { URL.revokeObjectURL(url); res(im); }; im.onerror = () => rej(new Error('图片读取失败，请换一张 JPG/PNG')); im.src = url; });
+}
+async function compress(file, max, q) {
+  const im = await loadImage(file);
+  const s = Math.min(1, max / Math.max(im.naturalWidth, im.naturalHeight));
+  const c = document.createElement('canvas'); c.width = Math.round(im.naturalWidth * s); c.height = Math.round(im.naturalHeight * s);
+  c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', q));
+  return { blob, w: c.width, h: c.height };
+}
+async function upload(blob) {
+  const d = new Date(), path = `uploads/${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}.jpg`;
+  const { error } = await sb.storage.from('carshell').upload(path, blob, { contentType: 'image/jpeg', cacheControl: '31536000' });
+  if (error) throw new Error('图片上传失败：' + error.message);
+  return sb.storage.from('carshell').getPublicUrl(path).data.publicUrl;
+}
+function submitPage() {
+  if (!sb) { app.innerHTML = `<section class="wrap lib-head page-enter"><h1>投稿</h1><p>投稿服务暂时不可用，请稍后再试。</p></section>`; return; }
+  const files = { cover: null, finished: null, scan: null, parts: [] };
+  const numField = (k, l, ph, req) => `<label class="f"><span>${l}${req ? ' <i>*</i>' : ''}</span><div class="unit"><input id="f-${k}" inputmode="decimal" placeholder="${ph}" ${req ? 'required' : ''}><em>mm</em></div></label>`;
+  app.innerHTML = `
+  <section class="wrap lib-head page-enter"><p class="eyebrow">BUILD YOUR GARAGE</p><h1>投稿车壳</h1><p>记录尺寸与细节，让下一位车友搭配更有把握。</p></section>
+  <section class="wrap"><form class="submit-form" id="submitForm" novalidate>
+    <div class="drop cover-drop" id="coverDrop" tabindex="0" role="button" aria-label="上传封面图"><input type="file" accept="image/*" id="fCover" hidden><div class="drop-empty"><b>＋</b><span>点击上传封面图 <i>*</i></span><small>建议横拍，能看清车壳整体</small></div></div>
+    <div class="form-card">
+      <label class="f"><span>车壳名称 <i>*</i></span><input id="f-name" maxlength="40" placeholder="如：尼桑400Z LBWK宽体" required></label>
+      <div class="f"><span>生产公司</span><div class="chips" id="fBrand">${BRANDS.map((b, i) => `<button type="button" class="chip ${i ? '' : 'on'}" data-v="${b}">${b}</button>`).join('')}</div></div>
+      <label class="f"><span>车型分类 <small class="muted" id="modelHint">按名称自动识别，可修改</small></span><select id="f-model">${MODEL_NAMES.map(m => `<option>${m}</option>`).join('')}</select></label>
+    </div>
+    <div class="form-card"><h3>尺寸</h3><p class="muted">用卡尺测量，轮距按轮眉位置测量。</p>
+      <div class="f-grid">${numField('wb', '轴距', '如 98', 1)}${numField('ft', '前轮距', '如 76', 1)}${numField('rt', '后轮距', '如 78', 1)}${numField('len', '车身长度', '选填', 0)}</div>
+    </div>
+    <div class="form-card">
+      <label class="switch-row"><span>宽体车壳</span><input type="checkbox" id="f-wide"><i class="switch"></i></label>
+      <div id="wideBox" hidden>
+        <label class="f"><span>宽体购买链接</span><input id="f-link" maxlength="300" placeholder="淘宝/闲鱼链接（选填）"></label>
+        <div class="f"><span>宽体 3D 扫描图</span><div class="drop small-drop" id="scanDrop" tabindex="0" role="button"><input type="file" accept="image/*" id="fScan" hidden><div class="drop-empty"><b>＋</b><span>上传扫描图</span></div></div></div>
+      </div>
+    </div>
+    <div class="form-card"><h3>照片</h3>
+      <div class="f"><span>成品照片</span><div class="drop small-drop" id="finDrop" tabindex="0" role="button"><input type="file" accept="image/*" id="fFin" hidden><div class="drop-empty"><b>＋</b><span>上传成品照片</span></div></div></div>
+      <div class="f"><span>板件图 <small class="muted">最多 9 张</small></span><div class="parts-pick" id="partsPick"><label class="part-add"><input type="file" accept="image/*" multiple id="fParts" hidden><b>＋</b></label></div></div>
+    </div>
+    <div class="form-card">
+      <label class="f"><span>备注</span><textarea id="f-note" maxlength="200" rows="2" placeholder="涂装、改装、注意事项（选填）"></textarea></label>
+      <label class="f"><span>你的昵称 <i>*</i></span><input id="f-by" maxlength="20" value="${esc(nickname)}" placeholder="车友昵称" required></label>
+    </div>
+    <p class="form-err" id="formErr" role="alert"></p>
+    <button class="btn primary submit-btn" type="submit" id="submitBtn">发布车壳</button>
+    <p class="muted" style="font-size:13px;text-align:center;margin-top:12px">发布后立即上架。用同一台设备可以删除自己的投稿。</p>
+  </form></section>`;
+  const preview = (drop, file) => { const u = URL.createObjectURL(file); drop.classList.add('has'); drop.querySelector('.drop-empty').innerHTML = `<img src="${u}" alt=""><span class="drop-change">更换</span>`; };
+  const bindDrop = (dropId, inputId, key) => {
+    const d = $('#' + dropId), inp = $('#' + inputId);
+    d.addEventListener('click', () => inp.click());
+    d.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inp.click(); } });
+    inp.addEventListener('change', () => { const f = inp.files[0]; if (f) { files[key] = f; preview(d, f); } });
+  };
+  bindDrop('coverDrop', 'fCover', 'cover'); bindDrop('scanDrop', 'fScan', 'scan'); bindDrop('finDrop', 'fFin', 'finished');
+  const renderParts = () => {
+    const box = $('#partsPick');
+    $$('.part-thumb', box).forEach(n => n.remove());
+    files.parts.forEach((f, i) => box.insertAdjacentHTML('beforeend', `<div class="part-thumb"><img src="${URL.createObjectURL(f)}" alt=""><button type="button" data-rm="${i}" aria-label="移除">×</button></div>`));
+    $('.part-add', box).hidden = files.parts.length >= 9;
+  };
+  $('#fParts').addEventListener('change', e => { files.parts = files.parts.concat([...e.target.files]).slice(0, 9); e.target.value = ''; renderParts(); });
+  $('#partsPick').addEventListener('click', e => { const b = e.target.closest('[data-rm]'); if (b) { files.parts.splice(+b.dataset.rm, 1); renderParts(); } });
+  let brand = BRANDS[0], modelTouched = false;
+  $('#fBrand').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; brand = b.dataset.v; $$('#fBrand .chip').forEach(c => c.classList.toggle('on', c === b)); });
+  $('#f-name').addEventListener('input', e => { if (!modelTouched) $('#f-model').value = inferModel(e.target.value); });
+  $('#f-model').addEventListener('change', () => { modelTouched = true; });
+  $('#f-wide').addEventListener('change', e => { $('#wideBox').hidden = !e.target.checked; });
+  $('#submitForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const err = $('#formErr'), btn = $('#submitBtn'), v = id => $('#f-' + id).value.trim();
+    const fail = (msg, el) => { err.textContent = msg; el?.scrollIntoView({ block: 'center', behavior: 'smooth' }); el?.focus?.(); };
+    if (!files.cover) return fail('请上传封面图', $('#coverDrop'));
+    if (!v('name')) return fail('请填写车壳名称', $('#f-name'));
+    for (const [k, l, lo, hi] of [['wb', '轴距', 50, 300], ['ft', '前轮距', 30, 250], ['rt', '后轮距', 30, 250]]) { const n = parseFloat(v(k)); if (!(n >= lo && n <= hi)) return fail(`${l}需要填 ${lo}–${hi} 之间的数字`, $('#f-' + k)); }
+    if (v('len') && !(parseFloat(v('len')) >= 50 && parseFloat(v('len')) <= 500)) return fail('车身长度需要在 50–500 mm', $('#f-len'));
+    if (!v('by')) return fail('请填写你的昵称', $('#f-by'));
+    err.textContent = ''; btn.disabled = true;
+    const total = 2 + (files.finished ? 1 : 0) + ($('#f-wide').checked && files.scan ? 1 : 0) + files.parts.length; let done = 0;
+    const step = () => { btn.textContent = `正在上传图片 ${++done}/${total}…`; };
+    try {
+      btn.textContent = '正在处理图片…';
+      const big = await compress(files.cover, 1800, .82), small = await compress(files.cover, 720, .78);
+      const cover = await upload(big.blob); step(); const thumb = await upload(small.blob); step();
+      const one = async f => { const r = await upload((await compress(f, 1800, .82)).blob); step(); return r; };
+      const finished = files.finished ? await one(files.finished) : '';
+      const scan = $('#f-wide').checked && files.scan ? await one(files.scan) : '';
+      const parts = []; for (const f of files.parts) parts.push(await one(f));
+      btn.textContent = '正在发布…';
+      const payload = { name: v('name'), brand, model: $('#f-model').value, wb: v('wb'), ft: v('ft'), rt: v('rt'), len: v('len'), wide: $('#f-wide').checked, wideLink: v('link'), note: v('note'), by: v('by'), cover, thumb, ratio: +(big.w / big.h).toFixed(3), finished, scan, parts };
+      const { data: id, error } = await sb.rpc('cs_add_car', { p: payload, p_token: TOKEN });
+      if (error) throw new Error(error.message);
+      nickname = v('by'); store.set('nick', nickname); myCars.add(id);
+      const { data: row } = await sb.from('cs_cars').select(COLS).eq('id', id).single();
+      if (row) { const c = fromRow(row); CARS.unshift(c); BY_ID.set(c.id, c); }
+      toast('发布成功，谢谢分享！');
+      lastPage = '#/library'; currentPage = null; location.hash = '#/car/' + id;
+    } catch (ex) { btn.disabled = false; btn.textContent = '发布车壳'; fail(ex.message || '发布失败，请重试'); }
+  });
+}
+
 /* ---------- router ---------- */
 let lastPage = '#/', currentPage = null;
 function route() {
@@ -691,7 +814,7 @@ function route() {
   const [name, arg] = h.split('/');
   return { name: name || 'home', arg };
 }
-const PAGES = { home, library, rank, setup, saved: savedPage, compare: comparePage };
+const PAGES = { home, library, rank, setup, saved: savedPage, compare: comparePage, submit: submitPage };
 function render() {
   const r = route();
   if (r.name === 'car') {
