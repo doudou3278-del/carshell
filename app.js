@@ -522,7 +522,7 @@ document.addEventListener('click', e => {
   const bd = e.target.closest('[data-board]'); if (bd) { closeDetail(); return loadCarToBoard(BY_ID.get(bd.dataset.board)); }
   const sh = e.target.closest('[data-share]'); if (sh) { const url = location.href.split('#')[0] + '#/car/' + sh.dataset.share; navigator.share ? navigator.share({ title: BY_ID.get(sh.dataset.share).name, url }).catch(() => {}) : copy(url); return; }
   const cp = e.target.closest('[data-copy]'); if (cp) return copy(cp.dataset.copy);
-  const sb = e.target.closest('[data-shelf]'); if (sb) { const s = $('#' + sb.dataset.shelf); s.scrollBy({ left: sb.dataset.dir * s.clientWidth * .8, behavior: 'smooth' }); return; }
+  const shelfBtn = e.target.closest('[data-shelf]'); if (shelfBtn) { const s = $('#' + shelfBtn.dataset.shelf); s.scrollBy({ left: shelfBtn.dataset.dir * s.clientWidth * .8, behavior: 'smooth' }); return; }
   const c = e.target.closest('[data-car]'); if (c && !e.target.closest('a')) { location.hash = '#/car/' + c.dataset.car; }
 });
 document.addEventListener('keydown', e => {
