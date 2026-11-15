@@ -20,7 +20,7 @@ create table if not exists public.cs_cars (
   name        text not null,
   brand       text not null default '其他',
   model       text not null default '其他',
-  scale       text not null default '1/28',
+  scale       text not null default '1/24',
   wide        boolean not null default false,
   wide_link   text not null default '',
   len numeric, wb numeric, ft numeric, rt numeric,
