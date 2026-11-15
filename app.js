@@ -337,8 +337,9 @@ function overlaySvg(list) {
 /* ---------- setup board ---------- */
 const DEFAULT_BOARD = { wheelbase: 98, frontTrack: 76, rearTrack: 78, frontToe: 0, rearToe: 0, frontCamber: 0, rearCamber: 0, caster: 0 };
 // Tyre outline defaults per scale — starting points only; the user should type their own tyre's size.
-const SCALES = { '1/24': { d: 30, w: 10 }, '1/28': { d: 24, w: 8 }, '1/10': { d: 64, w: 26 } };
+const SCALES = { '1/24': { d: 30, w: 10 }, '1/28': { d: 24, w: 8 } };
 let rig = Object.assign({ scale: '1/24', tireD: 30, tireW: 10, shellOn: true }, store.get('rig', {}));
+if (!SCALES[rig.scale]) Object.assign(rig, { scale: '1/24', tireD: 30, tireW: 10 });
 const saveRig = () => { store.set('rig', rig); drawBoard(); };
 let board = SetupBoard.validate(store.get('board', DEFAULT_BOARD)) || { ...DEFAULT_BOARD };
 let boardCar = store.get('boardCar', null);
@@ -380,7 +381,7 @@ function setup() {
     </div>
   </section>
   <section class="wrap tune" id="tune">
-    <div class="section-head"><div><p class="eyebrow">RWD DRIFT TUNING</p><h2>后驱漂移调校。</h2><p>参考车友经验和 1/10 后驱教学整理。没有一套适合所有车的数值：每次只改一项，试车后记下来。</p></div></div>
+    <div class="section-head"><div><p class="eyebrow">RWD DRIFT TUNING</p><h2>后驱漂移调校。</h2><p>参考 1/24 车友经验整理，个别项借鉴 1/10 后驱教学。没有一套适合所有车的数值：每次只改一项，试车后记下来。</p></div></div>
     <div class="seg tune-seg" id="tuneSeg"><i></i><button data-t="base">起步设定</button><button data-t="fix">症状诊断</button><button data-t="fit">车壳适配</button></div>
     <div id="tuneBody"></div>
   </section>`;
@@ -411,18 +412,12 @@ const SRC = {
   bmr: ['BMR-X Pro 1/24 后驱车架介绍', 'https://k.sina.cn/article_1760441023_68ee32bf00100zhnb.html']
 };
 const BASELINES = {
-  '1/24': { title: '1/24 后驱蚊车', note: '蚊车本身容易过甩，思路是「减甩」：后轮也要给负外倾，场地越小束角可以越大。轴距越长越难控。', src: ['rcf24', 'rcfTune', 'rcfYear', 'rcfJ2'], rows: [
+  '1/24': { title: '1/24 后驱蚊车', note: '蚊车本身容易过甩，思路是「减甩」：后轮也要给负外倾，场地越小束角可以越大。轴距越长越难控。', src: ['rcf24', 'rcfTune', 'rcfYear', 'rcfJ2', 'ae'], rows: [
     ['frontCamber', '前外倾', '−4° ~ −6°', -5, '太大会让转向角变小、后轮抓地变差'],
     ['rearCamber', '后外倾', '−2° ~ −3°', -2.5, '1/24 必须给后轮负外倾来减甩'],
     ['frontToe', '前束（单侧）', '0° ~ −1°（外八）', -0.5, '外八有助于横走、入弯'],
     ['rearToe', '后束（单侧）', '+1° ~ +3°（内八）', 2, '内八多，推力更多指向车身中线；小场地车友会给到更大'],
-    ['caster', '主销后倾', '适量，参考 1/10 的 8° ~ 10°', 8, '帮陀螺仪感受路面、减少抖动；太大车尾会把车头拉离轨迹']] },
-  '1/10': { title: '1/10 后驱漂移', note: '1/10 车相对不容易甩，通常后轮外倾给得比蚊车少。以下是常见的起步值。', src: ['ae', 'rcfTune'], rows: [
-    ['frontCamber', '前外倾', '约 −7°', -7, ''],
-    ['rearCamber', '后外倾', '−2.5° ~ −3°', -2.5, ''],
-    ['frontToe', '前束（单侧）', '总外八约 1°，即单侧 −0.5°', -0.5, ''],
-    ['rearToe', '后束（单侧）', '总内八 2.5° ~ 3°，即单侧约 +1.3°', 1.5, '部分车架后束是固定的'],
-    ['caster', '主销后倾', '8° ~ 10°', 9, '影响回正和反打时前轮的表现']] }
+    ['caster', '主销后倾', '适量，参考 1/10 的 8° ~ 10°', 8, '帮陀螺仪感受路面、减少抖动；太大车尾会把车头拉离轨迹']] }
 };
 const FIXES = [
   { k: 'push', t: '推头 · 转向不足', d: '车头往外跑，尾巴甩不起来，横不过去。', src: ['rcfTable'], acts: [
@@ -436,11 +431,11 @@ const FIXES = [
   { k: 'lock', t: '转向角不够 · 前轮吃不住', d: '打死了还是横不起来，或前轮一打角就打滑。', src: ['rcfYear', 'rcfTune'], acts: [['frontCamber', 0.5, '前外倾减小']],
     tips: ['前外倾太大会让转向角变小、前轮转向几何变化。', '打死方向后再调拉杆：保持一点点正阿克曼，看对侧前轮离避震约 1 cm。'] }
 ];
-let tuneTab = 'base', baseScale = null;
+let tuneTab = 'base';
 function bindRig() {
   const seg = $('#scaleSeg');
   const mark = () => { $$('#scaleSeg button').forEach(b => b.classList.toggle('on', b.dataset.scale === rig.scale)); moveSeg(seg); };
-  seg.onclick = e => { const b = e.target.closest('[data-scale]'); if (!b) return; rig.scale = b.dataset.scale; rig.tireD = SCALES[rig.scale].d; rig.tireW = SCALES[rig.scale].w; $('#tireD').value = rig.tireD; $('#tireW').value = rig.tireW; mark(); saveRig(); baseScale = rig.scale === '1/10' ? '1/10' : '1/24'; renderTune(); };
+  seg.onclick = e => { const b = e.target.closest('[data-scale]'); if (!b) return; rig.scale = b.dataset.scale; rig.tireD = SCALES[rig.scale].d; rig.tireW = SCALES[rig.scale].w; $('#tireD').value = rig.tireD; $('#tireW').value = rig.tireW; mark(); saveRig(); renderTune(); };
   [['tireD', 10, 120], ['tireW', 3, 60]].forEach(([k, lo, hi]) => $('#' + k).oninput = e => { const v = parseFloat(e.target.value); if (v >= lo && v <= hi) { rig[k] = v; saveRig(); } });
   mark();
 }
@@ -457,14 +452,12 @@ function renderTune() {
   $$('#tuneSeg button').forEach(b => b.classList.toggle('on', b.dataset.t === tuneTab)); moveSeg($('#tuneSeg'));
   $('#tuneSeg').onclick = e => { const b = e.target.closest('[data-t]'); if (b) { tuneTab = b.dataset.t; renderTune(); } };
   if (tuneTab === 'base') {
-    const key = baseScale || (rig.scale === '1/10' ? '1/10' : '1/24'), B = BASELINES[key];
+    const B = BASELINES['1/24'];
     body.innerHTML = `<div class="form-card"><div class="lib-head-row"><div><h3>${B.title} · 起步参考</h3><p class="muted">${B.note}</p></div>
-      <div class="seg" id="baseSeg"><i></i>${Object.keys(BASELINES).map(k => `<button data-b="${k}">${k}</button>`).join('')}</div></div>
+</div>
       <div class="base-table">${B.rows.map(([k, l, range, v, why]) => `<div class="base-row"><div><b>${l}</b><small>${esc(why)}</small></div><span class="range">${range}</span><span class="now">当前 ${board[k]}°</span><button class="btn small secondary" data-set="${k}" data-v="${v}">设为 ${v}°</button></div>`).join('')}</div>
       <div class="mini-actions"><button class="btn primary" id="applyBase">全部套用到调车板</button></div>
       <p class="muted small-note">这些是起点，不是答案。路面、轮胎、车架几何不同，结果会差很多。套用后建议在「调车工具 → 调校记录」记一笔再试车。</p>${srcLinks(B.src)}</div>`;
-    $$('#baseSeg button').forEach(b => b.classList.toggle('on', b.dataset.b === key)); moveSeg($('#baseSeg'));
-    $('#baseSeg').onclick = e => { const b = e.target.closest('[data-b]'); if (b) { baseScale = b.dataset.b; renderTune(); } };
     $$('#tuneBody [data-set]').forEach(b => b.onclick = () => { setBoardValue(b.dataset.set, +b.dataset.v); renderTune(); });
     $('#applyBase').onclick = () => { B.rows.forEach(([k, , , v]) => setBoardValue(k, v)); toast(`已套用 ${B.title} 起步参考`); renderTune(); };
   }
