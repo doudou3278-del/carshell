@@ -725,3 +725,5 @@ a.d-by:hover b{color:var(--accent)}
 .akm-live{gap:14px}
 .akm-read{margin-top:6px}
 .tag-akm{display:inline-block;font-size:10px;font-weight:700;color:#000;background:var(--accent);border-radius:5px;padding:1px 5px;margin-left:6px;vertical-align:2px}
+/* no pointer-following glow on the hero */
+.h2-glow{background:radial-gradient(60% 45% at 50% 100%,rgba(0,255,102,.18),transparent 70%)}

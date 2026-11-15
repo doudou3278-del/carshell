@@ -118,7 +118,7 @@ function heroFx() {
   requestAnimationFrame(() => hero.classList.add('ready'));
   if (reduceMotion) return;
   let mx = 0, my = 0, tx = 0, ty = 0, raf = 0, alive = true;
-  const onMove = e => { const r = hero.getBoundingClientRect(); mx = (e.clientX - r.left) / r.width - .5; my = (e.clientY - r.top) / r.height - .5; hero.style.setProperty('--gx', (e.clientX - r.left) + 'px'); hero.style.setProperty('--gy', (e.clientY - r.top) + 'px'); };
+  const onMove = e => { const r = hero.getBoundingClientRect(); mx = (e.clientX - r.left) / r.width - .5; my = (e.clientY - r.top) / r.height - .5; };
   const tick = () => {
     if (!alive) return;
     tx += (mx - tx) * .06; ty += (my - ty) * .06;
@@ -155,7 +155,7 @@ function home() {
       <div class="h2-glow" aria-hidden="true"></div>
       <div class="h2-shade" aria-hidden="true"></div>
       <div class="h2-copy" id="h2copy">
-        <p class="h2-eyebrow"><span class="dot"></span>1/28 RC 车壳尺寸库 · ${CARS.length} 款实测</p>
+        <p class="h2-eyebrow"><span class="dot"></span>1/24 RC 车壳尺寸库 · ${CARS.length} 款实测</p>
         <h1 class="h2-title">${splitChars('每一毫米，', 'grad', 0)}<br>${splitChars('都有车友量过。', '', 5)}</h1>
         <p class="h2-lead">轴距、轮距、车身长度与实拍图。挑壳、对比、上调车板，一站完成。</p>
         <div class="hero-cta h2-cta"><a class="btn primary" href="#/library">浏览车壳库</a><a class="btn secondary" href="#/submit">投稿车壳</a><a class="btn ghost" href="#/setup">打开电子调车板 ${I.arrow}</a></div>
