@@ -1002,6 +1002,7 @@ function footMeta() {
   $('#footMeta').innerHTML = remote
     ? `${CARS.length} 款车壳 · 数据实时来自车友 · <button id="adminLink" class="link-btn">${isAdmin ? '退出管理' : '管理员'}</button>`
     : `数据迁移自「头蚊字 Dou」小程序 · 快照 ${fmtDate(DATA.exportedAt)} · 共 ${CARS.length} 款车壳 · <button id="adminLink" class="link-btn">管理员</button>`;
+  if (installMode()) { $('#footMeta').insertAdjacentHTML('beforeend', ` · <button id="installLink" class="link-btn">安装 App</button>`); $('#installLink').onclick = startInstall; }
   $('#adminLink').onclick = adminLogin;
 }
 
@@ -1431,6 +1432,86 @@ function route() {
   const [name, arg] = h.split('/');
   return { name: name || 'home', arg };
 }
+
+/* ---------- PWA: service worker + install banner ---------- */
+const UA = navigator.userAgent;
+const IS_IOS = /iphone|ipad|ipod/i.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const IS_IPAD = /ipad/i.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const IS_WECHAT = /micromessenger/i.test(UA);
+const IS_STANDALONE = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+let installEvt = null;
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+const installMode = () => IS_STANDALONE ? null : IS_WECHAT ? 'wechat' : installEvt ? 'prompt' : IS_IOS ? 'ios' : null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; footMeta(); scheduleBanner(); });
+addEventListener('appinstalled', () => { installEvt = null; hideBanner(); store.set('installed', true); toast('装好了，去桌面找 Dou 吧'); footMeta(); });
+
+function scheduleBanner() {
+  clearTimeout(scheduleBanner.t);
+  const mode = installMode();
+  if (!mode || store.get('installed', false) || $('#installBar')) return;
+  const snooze = store.get('installSnooze', 0);
+  if (Date.now() < snooze) return;
+  scheduleBanner.t = setTimeout(() => showBanner(mode), 4000);
+}
+function showBanner(mode) {
+  if ($('#installBar') || document.body.classList.contains('sheet-open')) return;
+  const sub = {
+    prompt: '装到桌面后全屏打开，没网也能翻车壳、用调车板',
+    ios: '全屏打开，没网也能翻车壳、用调车板',
+    wechat: '微信里装不了，先用浏览器打开本页'
+  }[mode];
+  const btn = mode === 'prompt' ? '安装' : mode === 'ios' ? '怎么装' : '怎么做';
+  const el = document.createElement('div');
+  el.id = 'installBar'; el.className = 'install-bar'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', '安装 App');
+  el.innerHTML = `<img src="icons/icon-192.png" alt="" width="44" height="44">
+    <div class="ib-text"><b>把 Dou 装成 App</b><span>${sub}</span></div>
+    <button class="btn primary small ib-go">${btn}</button>
+    <button class="ib-x" aria-label="不再提示">${I.x}</button>`;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
+  el.querySelector('.ib-go').onclick = () => startInstall();
+  el.querySelector('.ib-x').onclick = () => { store.set('installSnooze', Date.now() + 7 * 864e5); hideBanner(); };
+}
+function hideBanner() {
+  const el = $('#installBar'); if (!el) return;
+  el.classList.remove('show'); setTimeout(() => el.remove(), 450);
+}
+async function startInstall() {
+  const mode = installMode();
+  if (mode === 'prompt') {
+    hideBanner();
+    installEvt.prompt();
+    const { outcome } = await installEvt.userChoice.catch(() => ({}));
+    installEvt = null;
+    if (outcome !== 'accepted') store.set('installSnooze', Date.now() + 3 * 864e5);
+    footMeta();
+    return;
+  }
+  if (mode === 'ios' || mode === 'wechat') { hideBanner(); installGuide(mode); return; }
+  toast(IS_STANDALONE ? '你已经在用 App 版了' : '这个浏览器不支持安装，换 Chrome / Edge / Safari 试试');
+}
+function installGuide(mode) {
+  const share = '<svg viewBox="0 0 24 24" class="ig-ico"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>';
+  const plus = '<svg viewBox="0 0 24 24" class="ig-ico"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8v8M8 12h8"/></svg>';
+  const dots = '<span class="ig-key">···</span>';
+  const steps = mode === 'wechat'
+    ? [[dots, '点右上角的 <b>···</b>'], ['<span class="ig-key">⤴</span>', '选 <b>在浏览器打开</b>（安卓）或 <b>在 Safari 中打开</b>（苹果）'], [plus, '打开后会再弹出安装提示，照着点就行']]
+    : [[share, `点${(IS_IPAD || /crios|fxios|edgios/i.test(UA)) ? '地址栏右边' : '屏幕底部'}的 <b>分享</b> 按钮`], [plus, '往下滑，选 <b>添加到主屏幕</b>'], ['<span class="ig-key">✓</span>', '右上角点 <b>添加</b>，桌面就有 Dou 了']];
+  const wrap = document.createElement('div');
+  wrap.className = 'install-guide';
+  wrap.innerHTML = `<div class="ig-backdrop"></div><div class="ig-panel" role="dialog" aria-modal="true" aria-label="安装方法">
+    <img src="icons/icon-192.png" alt="" width="64" height="64">
+    <h3>${mode === 'wechat' ? '先换到浏览器' : '添加到主屏幕'}</h3>
+    <ol>${steps.map(([ico, t]) => `<li>${ico}<span>${t}</span></li>`).join('')}</ol>
+    <button class="btn primary ig-ok">知道了</button></div>
+    ${mode === 'ios' && !IS_IPAD && !/crios|fxios|edgios/i.test(UA) ? '<div class="ig-arrow" aria-hidden="true"></div>' : ''}`;
+  document.body.appendChild(wrap);
+  requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('show')));
+  const close = () => { wrap.classList.remove('show'); setTimeout(() => wrap.remove(), 400); };
+  wrap.querySelector('.ig-ok').onclick = close; wrap.querySelector('.ig-backdrop').onclick = close;
+}
 const PAGES = { home, library, rank, setup, saved: savedPage, compare: comparePage, submit: submitPage, me: mePage, u: userPage, tools: toolsPage, chassis: chassisPage };
 function render() {
   const r = route();
@@ -1469,4 +1550,5 @@ footMeta();
 updateBadge();
 render();
 loadRemote();
+scheduleBanner();
 })();
