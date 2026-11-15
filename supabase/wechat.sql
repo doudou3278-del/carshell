@@ -61,7 +61,8 @@ begin
   update cs_cars c set by_name = p.nickname, avatar = p.avatar from cs_profiles p where p.owner_hash = nh and c.owner_hash = nh;
 
   -- 4) recompute like totals touched by the merge
-  update cs_cars c set like_count = c.base_likes + (select count(*) from cs_likes l where l.car_id = c.id);
+  update cs_cars c set like_count = c.base_likes + (select count(*) from cs_likes l where l.car_id = c.id)
+    where c.id in (select car_id from cs_likes where token_hash = nh);
 
   return (select json_build_object('public_id', p.public_id, 'nickname', p.nickname, 'avatar', p.avatar,
           'claimed_cars', cars_n, 'claimed_comments', comments_n) from cs_profiles p where p.owner_hash = nh);
