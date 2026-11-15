@@ -135,16 +135,6 @@ function heroFx() {
   raf = requestAnimationFrame(tick);
   heroCleanup = () => { alive = false; cancelAnimationFrame(raf); hero.removeEventListener('pointermove', onMove); heroCleanup = null; };
 }
-function splash() {
-  if (reduceMotion || route().name !== 'home') return;
-  try { if (sessionStorage.getItem('dou.splash')) return; sessionStorage.setItem('dou.splash', '1'); } catch {}
-  const el = document.createElement('div'); el.className = 'splash'; el.setAttribute('aria-hidden', 'true');
-  el.innerHTML = `<div class="sp-logo"><span class="sp-cn">头蚊字</span><span class="sp-d">D</span><span class="sp-ou">ou</span><i class="sp-sweep"></i></div><p class="sp-sub">BUILT FOR THE SMALL DETAILS</p>`;
-  document.body.appendChild(el); document.body.classList.add('locked');
-  const done = () => { if (el.classList.contains('out')) return; el.classList.add('out'); document.body.classList.remove('locked'); setTimeout(() => el.remove(), 700); };
-  el.addEventListener('click', done);
-  setTimeout(done, 1700);
-}
 function home() {
   const f = featuredCar();
   const totalLikes = CARS.reduce((s, c) => s + c.likes, 0);
@@ -1356,7 +1346,6 @@ function renderPage(name) {
 }
 function updateNav(name) { $$('[data-nav]').forEach(a => a.classList.toggle('on', a.dataset.nav === name)); }
 addEventListener('hashchange', render);
-splash();
 footMeta();
 updateBadge();
 render();

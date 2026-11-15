@@ -638,23 +638,8 @@ a.d-by:hover b{color:var(--accent)}
 .h2-scroll span{position:absolute;left:50%;top:8px;width:4px;height:8px;margin-left:-2px;border-radius:2px;background:var(--accent);animation:wheelDot 1.8s ease-in-out infinite}
 @keyframes wheelDot{0%{opacity:0;transform:translateY(0)}30%{opacity:1}100%{opacity:0;transform:translateY(14px)}}
 #stats .stats{margin-top:40px}
-/* splash */
-.splash{position:fixed;inset:0;z-index:200;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;cursor:pointer;transition:opacity .6s var(--ease),transform .7s var(--ease),filter .6s}
-.splash.out{opacity:0;transform:scale(1.25);filter:blur(10px);pointer-events:none}
-.sp-logo{position:relative;display:flex;align-items:baseline;font-weight:800;letter-spacing:-.03em;overflow:hidden;padding:0 10px}
-.sp-cn{font-size:clamp(20px,3vw,28px);color:#f5f5f7;margin-right:10px;opacity:0;animation:spFade .5s var(--ease) .1s forwards}
-.sp-d{font-size:clamp(84px,14vw,150px);line-height:.9;color:var(--accent);opacity:0;animation:neonOn 1s steps(1) .25s forwards}
-.sp-ou{font-size:clamp(46px,7vw,80px);color:var(--accent);opacity:0;transform:translateX(-24px);animation:spSlide .6s var(--ease) .85s forwards;text-shadow:0 0 22px rgba(0,255,102,.6)}
-.sp-sweep{position:absolute;top:0;bottom:0;width:40%;left:-60%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);mix-blend-mode:overlay;animation:sweep .8s var(--ease) 1.05s forwards}
-.sp-sub{font-size:11px;letter-spacing:.35em;color:var(--dim);opacity:0;animation:spFade .6s var(--ease) 1.05s forwards}
-@keyframes neonOn{0%{opacity:.9;text-shadow:0 0 30px var(--accent)}8%{opacity:.1;text-shadow:none}16%{opacity:1;text-shadow:0 0 40px var(--accent),0 0 80px rgba(0,255,102,.6)}24%{opacity:.2;text-shadow:none}34%,100%{opacity:1;text-shadow:0 0 24px var(--accent),0 0 70px rgba(0,255,102,.55)}}
-@keyframes spSlide{to{opacity:1;transform:none}}
-@keyframes spFade{to{opacity:1}}
-@keyframes sweep{to{left:120%}}
 @media (prefers-reduced-motion:reduce){.h2-wall{opacity:.4!important}.h2-title .ch,.h2-eyebrow,.h2-lead,.h2-cta,.h2-scroll{opacity:1!important;transform:none!important;filter:none!important}}
 /* hero 2.0 tweaks */
-.sp-logo{overflow:visible}
-.sp-sweep{mix-blend-mode:screen;background:linear-gradient(100deg,transparent,rgba(180,255,210,.35),transparent);opacity:.9}
 .h2-shade{z-index:1;background:radial-gradient(62% 58% at 50% 50%,rgba(0,0,0,.86) 0%,rgba(0,0,0,.62) 50%,rgba(0,0,0,.2) 100%),linear-gradient(to bottom,#000 0%,transparent 16%,transparent 62%,rgba(0,0,0,.9) 100%)}
 .h2-floor{z-index:2;opacity:.7;height:46%}
 .h2-glow{z-index:2}
