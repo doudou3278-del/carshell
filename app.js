@@ -429,15 +429,18 @@ const SRC = {
   rcfJ2: ['RCFans · RWD 后驱漂移基本设定经验', 'https://rcfans.com/thread-752046-1-1.html'],
   rcfTable: ['RCFans · 漂移车架设定（闹仔调车表）', 'https://www.rcfans.com/thread-401862-1-1.html'],
   ae: ['1/10 RWD Drift Setup Guide', 'https://www.applianceelectronics.co.uk/blogs/rc-drift-setup-example'],
-  bmr: ['BMR-X Pro 1/24 后驱车架介绍', 'https://k.sina.cn/article_1760441023_68ee32bf00100zhnb.html']
+  bmr: ['BMR-X Pro 1/24 后驱车架介绍', 'https://k.sina.cn/article_1760441023_68ee32bf00100zhnb.html'],
+  angle: ['Why Drift Cars Run More Steering Angle', 'https://scarles.co.nz/blogs/news/why-drift-cars-run-more-steering-angle-and-how-to-get-it']
 };
 const BASELINES = {
-  '1/24': { title: '1/24 后驱蚊车', note: '蚊车本身容易过甩，思路是「减甩」：后轮也要给负外倾，场地越小束角可以越大。轴距越长越难控。', src: ['rcf24', 'rcfTune', 'rcfYear', 'rcfJ2', 'ae'], rows: [
+  '1/24': { title: '1/24 后驱蚊车', note: '蚊车本身容易过甩，思路是「减甩」：后轮也要给负外倾，场地越小束角可以越大。轴距越长越难控。', src: ['rcf24', 'rcfTune', 'rcfYear', 'rcfJ2', 'ae', 'angle'], rows: [
     ['frontCamber', '前外倾', '−4° ~ −6°', -5, '太大会让转向角变小、后轮抓地变差'],
     ['rearCamber', '后外倾', '−2° ~ −3°', -2.5, '1/24 必须给后轮负外倾来减甩'],
     ['frontToe', '前束（单侧）', '0° ~ −1°（外八）', -0.5, '外八有助于横走、入弯'],
     ['rearToe', '后束（单侧）', '+1° ~ +3°（内八）', 2, '内八多，推力更多指向车身中线；小场地车友会给到更大'],
-    ['caster', '主销后倾', '适量，参考 1/10 的 8° ~ 10°', 8, '帮陀螺仪感受路面、减少抖动；太大车尾会把车头拉离轨迹']] }
+    ['caster', '主销后倾', '适量，参考 1/10 的 8° ~ 10°', 8, '帮陀螺仪感受路面、减少抖动；太大车尾会把车头拉离轨迹'],
+    ['akmMax', '满舵内轮角', '55° ~ 60°', 58, '竞技车 60°~70°；新手先别打满，避免卡死和拖胎', '°'],
+    ['akmPct', '阿克曼', '+20% ~ +30%（一点点正）', 25, '新手先留一点正阿克曼；太多会扎弯心，开熟了再往平行调', '%']] }
 };
 const FIXES = [
   { k: 'push', t: '推头 · 转向不足', d: '车头往外跑，尾巴甩不起来，横不过去。', src: ['rcfTable'], acts: [
@@ -460,6 +463,10 @@ function bindRig() {
   mark();
 }
 function setBoardValue(k, v) {
+  if (k === 'akmMax' || k === 'akmPct') {
+    if (k === 'akmMax') akm.maxIn = Math.max(20, Math.min(80, Math.round(v))); else akm.pct = Math.max(-100, Math.min(120, Math.round(v / 5) * 5));
+    saveAkm(); if ($('#akmMax')) { bindAkmSync(); } drawBoard(); return true;
+  }
   const c = CTL.find(x => x[0] === k); if (!c) return false;
   v = Math.round(Math.max(c[2], Math.min(c[3], v)) * 10) / 10;
   board[k] = v; const r = $('#r-' + k);
@@ -475,7 +482,7 @@ function renderTune() {
     const B = BASELINES['1/24'];
     body.innerHTML = `<div class="form-card"><div class="lib-head-row"><div><h3>${B.title} · 起步参考</h3><p class="muted">${B.note}</p></div>
 </div>
-      <div class="base-table">${B.rows.map(([k, l, range, v, why]) => `<div class="base-row"><div><b>${l}</b><small>${esc(why)}</small></div><span class="range">${range}</span><span class="now">当前 ${board[k]}°</span><button class="btn small secondary" data-set="${k}" data-v="${v}">设为 ${v}°</button></div>`).join('')}</div>
+      <div class="base-table">${B.rows.map(([k, l, range, v, why, u = '°']) => `<div class="base-row${k.startsWith('akm') ? ' akm-row' : ''}"><div><b>${l}${k.startsWith('akm') ? ' <span class="tag-akm">AKM</span>' : ''}</b><small>${esc(why)}</small></div><span class="range">${range}</span><span class="now">当前 ${k === 'akmPct' ? pctLabel(akm.pct) : k === 'akmMax' ? akm.maxIn + '°' : board[k] + u}</span><button class="btn small secondary" data-set="${k}" data-v="${v}">设为 ${k === 'akmPct' ? pctLabel(v) : v + u}</button></div>`).join('')}</div>
       <div class="mini-actions"><button class="btn primary" id="applyBase">全部套用到调车板</button></div>
       <p class="muted small-note">这些是起点，不是答案。路面、轮胎、车架几何不同，结果会差很多。套用后建议在「调车工具 → 调校记录」记一笔再试车。</p>${srcLinks(B.src)}</div>`;
     $$('#tuneBody [data-set]').forEach(b => b.onclick = () => { setBoardValue(b.dataset.set, +b.dataset.v); renderTune(); });
@@ -567,9 +574,10 @@ function renderAkmChart() {
     <line x1="${x(k)}" x2="${x(k)}" y1="${P.t}" y2="${H - P.b}" class="cur"/>
     <circle cx="${x(k)}" cy="${y(cur.inner)}" r="4" class="ci-dot"/><circle cx="${x(k)}" cy="${y(cur.outer)}" r="4" class="co-dot"/></svg>`;
 }
+function bindAkmSync() { bindAkmSync.fn?.(); }
 function bindAkm() {
   const setPos = p => { akm.pos = Math.max(-100, Math.min(100, Math.round(p))); saveAkm(); drawBoard(); };
-  const syncSet = () => {
+  const syncSet = bindAkmSync.fn = () => {
     $('#akmMax').value = akm.maxIn; $('#akmMaxOut').innerHTML = `${akm.maxIn}<small>°</small>`;
     $('#akmPct').value = akm.pct; $('#akmPctOut').innerHTML = `${pctLabel(akm.pct)}<small> ${Math.abs(akm.pct) < 3 ? '平行' : akm.pct > 0 ? '正' : '反'}</small>`;
     [['akmMax', 20, 80], ['akmPct', -100, 120]].forEach(([id, lo, hi]) => $('#' + id).style.setProperty('--p', ((+$('#' + id).value - lo) / (hi - lo) * 100) + '%'));
