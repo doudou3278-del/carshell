@@ -763,3 +763,9 @@ svg.ig-ico{stroke:currentColor;stroke-width:2;fill:none}
 .install-guide.show .ig-arrow{opacity:1}
 @keyframes igBob{50%{transform:translateY(8px)}}
 @media (display-mode: standalone){.nav{height:calc(52px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top)}}
+.nav-install{width:auto;padding:0 12px 0 9px;gap:5px;display:flex;align-items:center;border-radius:999px;border:1px solid rgba(0,255,102,.35);color:var(--accent);font-size:13px;font-weight:600;height:30px;margin-right:6px}
+.nav-install[hidden]{display:none}
+.nav-install svg{width:15px;height:15px;stroke:currentColor;stroke-width:2.2;fill:none}
+.nav-install:hover{color:#000;background:var(--accent)}
+@media (max-width:760px){.nav-install{margin-left:auto}.nav-install:not([hidden])+.nav-search{margin-left:0}}
+.ig-copy{width:100%;margin-bottom:10px}

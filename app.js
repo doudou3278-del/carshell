@@ -1443,9 +1443,16 @@ let installEvt = null;
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 }
-const installMode = () => IS_STANDALONE ? null : IS_WECHAT ? 'wechat' : installEvt ? 'prompt' : IS_IOS ? 'ios' : null;
-addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; footMeta(); scheduleBanner(); });
-addEventListener('appinstalled', () => { installEvt = null; hideBanner(); store.set('installed', true); toast('装好了，去桌面找 Dou 吧'); footMeta(); });
+const IS_ANDROID = /android/i.test(UA);
+const IS_MAC_SAFARI = /macintosh/i.test(UA) && /safari/i.test(UA) && !/chrome|chromium|crios|edg|firefox|claude|electron/i.test(UA) && !IS_IPAD;
+const installMode = () => IS_STANDALONE ? null : IS_WECHAT ? 'wechat' : installEvt ? 'prompt' : IS_IOS ? 'ios' : IS_ANDROID ? 'android' : IS_MAC_SAFARI ? 'macsafari' : 'desktop';
+function syncInstallUI() {
+  const mode = installMode();
+  const nb = $('#navInstall'); if (nb) nb.hidden = !mode;
+  const go = $('#installBar .ib-go'); if (go && mode) go.textContent = mode === 'prompt' ? '安装' : '怎么装';
+}
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; footMeta(); syncInstallUI(); scheduleBanner(); });
+addEventListener('appinstalled', () => { installEvt = null; hideBanner(); store.set('installed', true); toast('装好了，去桌面找 Dou 吧'); footMeta(); syncInstallUI(); });
 
 function scheduleBanner() {
   clearTimeout(scheduleBanner.t);
@@ -1453,16 +1460,13 @@ function scheduleBanner() {
   if (!mode || store.get('installed', false) || $('#installBar')) return;
   const snooze = store.get('installSnooze', 0);
   if (Date.now() < snooze) return;
-  scheduleBanner.t = setTimeout(() => showBanner(mode), 4000);
+  scheduleBanner.t = setTimeout(() => showBanner(), 4000);
 }
-function showBanner(mode) {
-  if ($('#installBar') || document.body.classList.contains('sheet-open')) return;
-  const sub = {
-    prompt: '装到桌面后全屏打开，没网也能翻车壳、用调车板',
-    ios: '全屏打开，没网也能翻车壳、用调车板',
-    wechat: '微信里装不了，先用浏览器打开本页'
-  }[mode];
-  const btn = mode === 'prompt' ? '安装' : mode === 'ios' ? '怎么装' : '怎么做';
+function showBanner() {
+  const mode = installMode();
+  if (!mode || $('#installBar')) return;
+  const sub = mode === 'wechat' ? '微信里装不了，先用浏览器打开本页' : mode === 'prompt' ? '装到桌面后全屏打开，没网也能翻车壳、用调车板' : '全屏打开，没网也能翻车壳、用调车板';
+  const btn = mode === 'prompt' ? '安装' : '怎么装';
   const el = document.createElement('div');
   el.id = 'installBar'; el.className = 'install-bar'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', '安装 App');
   el.innerHTML = `<img src="icons/icon-192.png" alt="" width="44" height="44">
@@ -1489,28 +1493,39 @@ async function startInstall() {
     footMeta();
     return;
   }
-  if (mode === 'ios' || mode === 'wechat') { hideBanner(); installGuide(mode); return; }
-  toast(IS_STANDALONE ? '你已经在用 App 版了' : '这个浏览器不支持安装，换 Chrome / Edge / Safari 试试');
+  if (mode) { hideBanner(); installGuide(mode); return; }
+  toast('你已经在用 App 版了');
 }
 function installGuide(mode) {
   const share = '<svg viewBox="0 0 24 24" class="ig-ico"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>';
   const plus = '<svg viewBox="0 0 24 24" class="ig-ico"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8v8M8 12h8"/></svg>';
   const dots = '<span class="ig-key">···</span>';
-  const steps = mode === 'wechat'
-    ? [[dots, '点右上角的 <b>···</b>'], ['<span class="ig-key">⤴</span>', '选 <b>在浏览器打开</b>（安卓）或 <b>在 Safari 中打开</b>（苹果）'], [plus, '打开后会再弹出安装提示，照着点就行']]
-    : [[share, `点${(IS_IPAD || /crios|fxios|edgios/i.test(UA)) ? '地址栏右边' : '屏幕底部'}的 <b>分享</b> 按钮`], [plus, '往下滑，选 <b>添加到主屏幕</b>'], ['<span class="ig-key">✓</span>', '右上角点 <b>添加</b>，桌面就有 Dou 了']];
+  const check = '<span class="ig-key">✓</span>';
+  const inClaude = /claude|electron/i.test(UA);
+  const STEPS = {
+    wechat: ['先换到浏览器', [[dots, '点右上角的 <b>···</b>'], ['<span class="ig-key">⤴</span>', '选 <b>在浏览器打开</b>（安卓）或 <b>在 Safari 中打开</b>（苹果）'], [plus, '打开后会再弹出安装提示，照着点就行']]],
+    ios: ['添加到主屏幕', [[share, `点${(IS_IPAD || /crios|fxios|edgios/i.test(UA)) ? '地址栏右边' : '屏幕底部'}的 <b>分享</b> 按钮`], [plus, '往下滑，选 <b>添加到主屏幕</b>'], [check, '右上角点 <b>添加</b>，桌面就有 Dou 了']]],
+    android: ['添加到桌面', [[dots, '点浏览器右上角的 <b>⋮</b> 或底部的 <b>≡</b> 菜单'], [plus, '选 <b>安装应用</b> 或 <b>添加到主屏幕</b>'], [check, '确认后桌面就有 Dou 了（推荐用 Chrome 或 Edge）']]],
+    macsafari: ['添加到程序坞', [['<span class="ig-key">⌘</span>', '点屏幕顶部菜单栏的 <b>文件</b>'], [plus, '选 <b>添加到程序坞</b>（需要 macOS 14 或更新）'], [check, '点 <b>添加</b>，程序坞和启动台里就有 Dou 了']]],
+    desktop: [inClaude ? '换个浏览器来装' : '装到电脑上', [
+      ['<span class="ig-key">1</span>', inClaude ? '这里是 Claude 的内置浏览器，装不了 App。复制链接，到 <b>Chrome</b>、<b>Edge</b> 或 Mac 的 <b>Safari</b> 里打开' : '这个浏览器不支持安装，请用 <b>Chrome</b>、<b>Edge</b> 或 Mac 的 <b>Safari</b> 打开本页'],
+      ['<span class="ig-key">2</span>', 'Chrome / Edge：点地址栏右边的 <b>安装</b> 图标；Safari：<b>文件 → 添加到程序坞</b>'],
+      ['<span class="ig-key">3</span>', '手机上更好用：用手机浏览器打开同一个网址，按提示添加到主屏幕']]]
+  };
+  const [title, steps] = STEPS[mode] || STEPS.desktop;
   const wrap = document.createElement('div');
   wrap.className = 'install-guide';
   wrap.innerHTML = `<div class="ig-backdrop"></div><div class="ig-panel" role="dialog" aria-modal="true" aria-label="安装方法">
     <img src="icons/icon-192.png" alt="" width="64" height="64">
-    <h3>${mode === 'wechat' ? '先换到浏览器' : '添加到主屏幕'}</h3>
+    <h3>${title}</h3>
     <ol>${steps.map(([ico, t]) => `<li>${ico}<span>${t}</span></li>`).join('')}</ol>
-    <button class="btn primary ig-ok">知道了</button></div>
+    ${mode === 'desktop' || mode === 'wechat' ? '<button class="btn secondary ig-copy">复制网址</button>' : ''}<button class="btn primary ig-ok">知道了</button></div>
     ${mode === 'ios' && !IS_IPAD && !/crios|fxios|edgios/i.test(UA) ? '<div class="ig-arrow" aria-hidden="true"></div>' : ''}`;
   document.body.appendChild(wrap);
   requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('show')));
   const close = () => { wrap.classList.remove('show'); setTimeout(() => wrap.remove(), 400); };
-  wrap.querySelector('.ig-ok').onclick = close; wrap.querySelector('.ig-backdrop').onclick = close;
+  wrap.querySelector('.ig-ok').onclick = close;
+  const cp = wrap.querySelector('.ig-copy'); if (cp) cp.onclick = () => { const u = location.origin + location.pathname; (navigator.clipboard?.writeText(u) || Promise.reject()).then(() => toast('网址已复制'), () => toast(u)); }; wrap.querySelector('.ig-backdrop').onclick = close;
 }
 const PAGES = { home, library, rank, setup, saved: savedPage, compare: comparePage, submit: submitPage, me: mePage, u: userPage, tools: toolsPage, chassis: chassisPage };
 function render() {
@@ -1550,5 +1565,7 @@ footMeta();
 updateBadge();
 render();
 loadRemote();
+syncInstallUI();
+$('#navInstall').onclick = startInstall;
 scheduleBanner();
 })();
