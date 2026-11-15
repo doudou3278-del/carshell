@@ -102,6 +102,49 @@ function shelf(id, title, sub, inner, link) {
 }
 
 /* ---------- pages ---------- */
+function splitChars(text, cls, delay) {
+  return `<span class="h2-line ${cls}">${[...text].map((ch, i) => `<span class="ch" style="--d:${(delay + i) * 55}ms">${esc(ch)}</span>`).join('')}</span>`;
+}
+function heroWall() {
+  const pool = [...CARS].filter(c => c.thumb).sort((a, b) => b.views - a.views).slice(0, 36);
+  const rows = [0, 1, 2].map(r => pool.filter((_, i) => i % 3 === r));
+  return rows.map((row, r) => `<div class="h2-row" style="--dur:${70 + r * 18}s;--dir:${r % 2 ? 'reverse' : 'normal'}">${[...row, ...row].map((c, i) => `<img src="${esc(c.thumb)}" alt="" ${i < row.length ? '' : 'aria-hidden="true"'} loading="${r === 1 && i < 6 ? 'eager' : 'lazy'}" decoding="async">`).join('')}</div>`).join('');
+}
+let heroCleanup = null;
+function heroFx() {
+  heroCleanup?.();
+  const hero = $('#hero2'); if (!hero) return;
+  const wall = $('#h2wall'), copy = $('#h2copy'), scrollHint = $('.h2-scroll', hero);
+  requestAnimationFrame(() => hero.classList.add('ready'));
+  if (reduceMotion) return;
+  let mx = 0, my = 0, tx = 0, ty = 0, raf = 0, alive = true;
+  const onMove = e => { const r = hero.getBoundingClientRect(); mx = (e.clientX - r.left) / r.width - .5; my = (e.clientY - r.top) / r.height - .5; hero.style.setProperty('--gx', (e.clientX - r.left) + 'px'); hero.style.setProperty('--gy', (e.clientY - r.top) + 'px'); };
+  const tick = () => {
+    if (!alive) return;
+    tx += (mx - tx) * .06; ty += (my - ty) * .06;
+    const p = Math.min(1, Math.max(0, scrollY / (hero.offsetHeight * .9)));
+    wall.style.transform = `translate3d(${tx * -40}px, ${ty * -24 + p * -60}px, 0) rotateX(${26 - p * 14 + ty * 4}deg) rotateZ(${-9 + tx * 3}deg) scale(${1.32 - p * .12})`;
+    wall.style.opacity = String(.62 - p * .4);
+    copy.style.transform = `translate3d(0, ${p * -90}px, 0) scale(${1 - p * .1})`;
+    copy.style.opacity = String(1 - p * 1.3);
+    copy.style.filter = p > .02 ? `blur(${p * 8}px)` : '';
+    if (scrollHint && p > .02) { scrollHint.style.transition = 'opacity .2s'; scrollHint.style.opacity = String(Math.max(0, 1 - p * 4)); } else if (scrollHint) scrollHint.style.opacity = '';
+    raf = requestAnimationFrame(tick);
+  };
+  hero.addEventListener('pointermove', onMove);
+  raf = requestAnimationFrame(tick);
+  heroCleanup = () => { alive = false; cancelAnimationFrame(raf); hero.removeEventListener('pointermove', onMove); heroCleanup = null; };
+}
+function splash() {
+  if (reduceMotion || route().name !== 'home') return;
+  try { if (sessionStorage.getItem('dou.splash')) return; sessionStorage.setItem('dou.splash', '1'); } catch {}
+  const el = document.createElement('div'); el.className = 'splash'; el.setAttribute('aria-hidden', 'true');
+  el.innerHTML = `<div class="sp-logo"><span class="sp-cn">头蚊字</span><span class="sp-d">D</span><span class="sp-ou">ou</span><i class="sp-sweep"></i></div><p class="sp-sub">BUILT FOR THE SMALL DETAILS</p>`;
+  document.body.appendChild(el); document.body.classList.add('locked');
+  const done = () => { if (el.classList.contains('out')) return; el.classList.add('out'); document.body.classList.remove('locked'); setTimeout(() => el.remove(), 700); };
+  el.addEventListener('click', done);
+  setTimeout(done, 1700);
+}
 function home() {
   const f = featuredCar();
   const totalLikes = CARS.reduce((s, c) => s + c.likes, 0);
@@ -115,17 +158,26 @@ function home() {
     return `<a class="model-tile" href="#/library?model=${encodeURIComponent(m)}">${img(cover.thumb, '')}<b>${esc(m)}</b><span>${n} 款车壳</span></a>`;
   }).join('');
   app.innerHTML = `
-  <section class="hero"><div class="wrap">
-    <p class="eyebrow reveal">1/28 RC 车壳尺寸库</p>
-    <h1 class="reveal"><span class="grad">每一毫米，</span><br>都有车友量过。</h1>
-    <p class="lead reveal">轴距、轮距、车身长度与实拍图。挑壳、对比、上调车板，一站完成。</p>
-    <div class="hero-cta reveal"><a class="btn primary" href="#/library">浏览车壳库</a><a class="btn secondary" href="#/submit">投稿车壳</a><a class="btn ghost" href="#/setup">打开电子调车板 ${I.arrow}</a></div>
-    <div class="stats reveal">
+  <section class="hero2" id="hero2" aria-label="头蚊字 Dou 车壳库">
+    <div class="h2-stage">
+      <div class="h2-wall" id="h2wall" aria-hidden="true">${heroWall()}</div>
+      <div class="h2-floor" aria-hidden="true"></div>
+      <div class="h2-glow" aria-hidden="true"></div>
+      <div class="h2-shade" aria-hidden="true"></div>
+      <div class="h2-copy" id="h2copy">
+        <p class="h2-eyebrow"><span class="dot"></span>1/28 RC 车壳尺寸库 · ${CARS.length} 款实测</p>
+        <h1 class="h2-title">${splitChars('每一毫米，', 'grad', 0)}<br>${splitChars('都有车友量过。', '', 5)}</h1>
+        <p class="h2-lead">轴距、轮距、车身长度与实拍图。挑壳、对比、上调车板，一站完成。</p>
+        <div class="hero-cta h2-cta"><a class="btn primary" href="#/library">浏览车壳库</a><a class="btn secondary" href="#/submit">投稿车壳</a><a class="btn ghost" href="#/setup">打开电子调车板 ${I.arrow}</a></div>
+      </div>
+      <a class="h2-scroll" href="#stats" aria-label="向下滑动"><span></span></a>
+    </div>
+  </section>
+  <section class="wrap" id="stats"><div class="stats reveal">
       <div class="stat"><b data-count="${CARS.length}">0</b><span>款实测车壳</span></div>
       <div class="stat"><b data-count="${contributors}">0</b><span>位车友贡献</span></div>
       <div class="stat"><b data-count="${totalViews}">0</b><span>次浏览</span></div>
       <div class="stat"><b data-count="${totalLikes}">0</b><span>个点赞</span></div>
-    </div>
   </div></section>
   <section class="section reveal"><div class="wrap">
     <div class="section-head"><div><h2>本周精选。</h2><p>这周被看得最多的一款。</p></div></div>
@@ -151,7 +203,7 @@ function home() {
     <div><p class="eyebrow">电子调车板</p><h2>把屏幕，<br>变成 1:1 实尺。</h2><p>用尺子校准一次，任何车壳的轴距和轮距都能按真实毫米画在屏幕上，直接对照前束和外倾。</p><a class="btn primary" href="#/setup">开始调车</a></div>
     ${miniBoard()}
   </div></section>`;
-  countUp(); bindShelves(); parallax();
+  countUp(); bindShelves(); parallax(); heroFx();
 }
 
 function miniBoard() {
@@ -1296,6 +1348,7 @@ function render() {
 }
 function renderPage(name) {
   app.removeEventListener('click', stepHandler);
+  heroCleanup?.();
   const fn = PAGES[name] || home;
   const go = () => { fn(); currentPage = location.hash || '#/'; if (route().name === 'car') currentPage = lastPage; reveal(); renderDock(); updateNav(name); };
   if (document.startViewTransition && !reduceMotion && currentPage) document.startViewTransition(go); else go();
@@ -1303,6 +1356,7 @@ function renderPage(name) {
 }
 function updateNav(name) { $$('[data-nav]').forEach(a => a.classList.toggle('on', a.dataset.nav === name)); }
 addEventListener('hashchange', render);
+splash();
 footMeta();
 updateBadge();
 render();
