@@ -151,6 +151,34 @@ function draw(ctx, width, height, scale, values, calibrated, reference, steering
         xx - Math.sin(r) * 12 * scale.x, yy + Math.cos(r) * 12 * scale.y, colors.wheels, 2)
     })
   })
+  if (steering && extra.akmLines && (Math.abs(steering.left) >= 1 || Math.abs(steering.right) >= 1)) {
+    // Ackermann diagram: from each front wheel centre along its axle line to the rear-axle line (all in mm).
+    var L = values.wheelbase, T = values.frontTrack, rearY = cy + g.wheelbasePx / 2, frontY = cy - g.wheelbasePx / 2
+    var hits = []
+    ;[[-1, steering.left], [1, steering.right]].forEach(function(pair) {
+      var a = pair[1] * Math.PI / 180
+      if (Math.abs(pair[1]) < 0.5) return
+      var xm = pair[0] * T / 2, hit = xm - L / Math.tan(a)
+      if (!isFinite(hit) || Math.abs(hit) > 4000) return
+      var inner = (pair[1] > 0) === (pair[0] < 0)
+      var color = inner ? colors.guides : '#64d2ff'
+      ctx.setLineDash([2, 4]); line(cx + xm * scale.x, frontY, cx + hit * scale.x, rearY, color, 1.2); ctx.setLineDash([])
+      ctx.beginPath(); ctx.fillStyle = color; ctx.arc(cx + hit * scale.x, rearY, 3.5, 0, Math.PI * 2); ctx.fill()
+      hits.push(hit)
+    })
+    if (hits.length) {
+      var lo = Math.min.apply(null, hits.concat([-values.rearTrack / 2])), hi = Math.max.apply(null, hits.concat([values.rearTrack / 2]))
+      ctx.setLineDash([6, 4]); line(cx + lo * scale.x, rearY, cx + hi * scale.x, rearY, 'rgba(200,255,217,.35)', 1); ctx.setLineDash([])
+    }
+    hits.forEach(function(h) {
+      var px = cx + h * scale.x
+      if (px < 8 || px > width - 8) text((px < 8 ? '← ' : '') + '转向中心在 ' + Math.abs(h).toFixed(0) + ' mm 外' + (px > width - 8 ? ' →' : ''), px < 8 ? 10 : width - 10, rearY - 8, '#789481', px < 8 ? 'left' : 'right')
+    })
+    if (hits.length === 2) {
+      var mid = Math.max(90, Math.min(width - 90, cx + (hits[0] + hits[1]) / 2 * scale.x))
+      text('转向中心错位 ' + Math.abs(hits[1] - hits[0]).toFixed(1) + ' mm', mid, rearY + 20, '#c8ffd9', 'center')
+    }
+  }
   if (extra.shell && extra.shell.wb > 0) {
     // Body arch centres (measured at the wheel arches) drawn over the chassis wheels.
     var sh = extra.shell, arch = '#ffc66d'

@@ -366,19 +366,39 @@ function setup() {
       <div class="ctl-pair">${ctl(CTL[3])}${ctl(CTL[4])}</div>
       <div class="ctl-pair">${ctl(CTL[5])}${ctl(CTL[6])}</div>
       ${ctl(CTL[7])}
-      <div class="ctl steer-card"><div class="ctl-head"><span>转向 · AKM</span><a class="link-mini" href="#/tools">调车工具 ${I.arrow}</a></div>
-        <div class="seg seg-full" id="steerSeg"><i></i>${STEER_MODES.map(([k, l]) => `<button data-mode="${k}">${l}</button>`).join('')}</div>
-        <div id="steerPanel"></div></div>
       <button class="btn secondary" id="resetBoard">恢复默认</button>
     </div>
     <div class="board-card" id="boardCard"><canvas id="board"></canvas>
-      <div class="wheel-dock" id="wheelDock" hidden>
-        <div class="steer-wheel" id="steerWheel" role="slider" tabindex="0" aria-label="方向盘" aria-valuemin="-100" aria-valuemax="100"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44"/><circle cx="50" cy="50" r="9"/><path d="M6 50h35M59 50h35M50 59v35"/><path class="tick" d="M50 6v10"/></svg></div>
-        <div class="wheel-read" id="wheelRead"></div>
-        <input type="range" id="steerPos" min="-100" max="100" step="1" value="0" aria-label="转向位置">
-      </div>
       <div class="board-bar"><span class="status" id="boardStatus"><i></i>未校准</span><span style="display:flex;gap:8px"><button class="btn small secondary" id="calBtn">${I.ruler} 校准</button><button class="round" id="fsBtn" aria-label="全屏">${I.expand}</button></span></div>
     </div>
+  </section>
+  <section class="wrap akm" id="akm">
+    <div class="section-head"><div><p class="eyebrow">ACKERMANN</p><h2>阿克曼 AKM。</h2><p>转动方向，看两前轮怎么分角度。画板上的虚线是两前轮的转向中心线：交在后轴上一点是理想阿克曼，错开越多偏离越大。</p></div></div>
+    <div class="akm-grid">
+      <div class="akm-card akm-live">
+        <div class="akm-wheel-row"><div class="steer-wheel" id="steerWheel" role="slider" tabindex="0" aria-label="方向盘，左右方向键转动" aria-valuemin="-100" aria-valuemax="100"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44"/><circle cx="50" cy="50" r="9"/><path d="M6 50h35M59 50h35M50 59v35"/><path class="tick" d="M50 6v10"/></svg></div>
+          <div class="akm-pos"><span id="akmWhere">回中</span><b id="akmRel">—</b></div></div>
+        <input type="range" id="steerPos" class="steer-range" min="-100" max="100" step="1" value="0" aria-label="转向位置">
+        <div class="akm-ticks"><span>左满舵</span><button id="akmCenter">回中</button><span>右满舵</span></div>
+        <div class="akm-read" id="akmRead"></div>
+      </div>
+      <div class="akm-card akm-chart"><div class="akm-chart-head"><b>内外轮角曲线</b><span class="legend"><i class="li"></i>内轮<i class="lo"></i>外轮<i class="ld"></i>角差</span></div><div id="akmChart"></div></div>
+      <div class="akm-card akm-set">
+        <div class="ctl-head"><span>满舵内轮角</span><output id="akmMaxOut"></output></div>
+        <input type="range" id="akmMax" min="20" max="80" step="1">
+        <div class="ctl-head" style="margin-top:14px"><span>阿克曼</span><output id="akmPctOut"></output></div>
+        <input type="range" id="akmPct" min="-100" max="120" step="5">
+        <div class="chips akm-presets">${AKM_PRESETS.map(([v, l]) => `<button class="chip" data-pct="${v}">${l}</button>`).join('')}</div>
+        <label class="switch-row small"><span>画转向中心线</span><input type="checkbox" id="akmLines"><i class="switch"></i></label>
+        <label class="switch-row small"><span>轮角刻度</span><input type="checkbox" id="akmScale"><i class="switch"></i></label>
+        <details class="akm-measure"><summary>实测反推：我的车现在是多少？</summary>
+          <p class="muted mini">把车打到左满舵，用量角器或画板刻度量两前轮相对车身中线的角度（不含前束），填进来。</p>
+          <div class="mini-grid"><label class="mini-f"><span>内轮（左轮）</span><div class="unit"><input id="mIn" inputmode="decimal" placeholder="如 58"><em>°</em></div></label><label class="mini-f"><span>外轮（右轮）</span><div class="unit"><input id="mOut" inputmode="decimal" placeholder="如 52"><em>°</em></div></label></div>
+          <p class="mini" id="mResult"></p><button class="btn small primary" id="mApply" hidden>按实测设置</button></details>
+      </div>
+    </div>
+    <p class="muted small-note akm-note">简化模型：内轮角随方向线性增加，外轮角由轴距、前轮距和阿克曼 % 推算；不含 Caster/KPI、连杆非线性和间隙。车友经验：保留一点点正阿克曼比较好开，给太多容易扎弯心、让车尾更快；反阿克曼要手上很细。</p>
+    ${srcLinks(['rcfYear', 'rcfTune'])}
   </section>
   <section class="wrap tune" id="tune">
     <div class="section-head"><div><p class="eyebrow">RWD DRIFT TUNING</p><h2>后驱漂移调校。</h2><p>参考 1/24 车友经验整理，个别项借鉴 1/10 后驱教学。没有一套适合所有车的数值：每次只改一项，试车后记下来。</p></div></div>
@@ -395,7 +415,7 @@ function setup() {
   $('#resetBoard').onclick = () => { board = { ...DEFAULT_BOARD }; boardCar = null; saveBoard(); setup(); };
   $('#pickCar').onclick = () => openSpot('pick');
   $('#calBtn').onclick = calibrate;
-  bindSteering();
+  bindAkm();
   bindRig();
   renderTune();
   $('#fsBtn').onclick = () => { const el = $('#boardCard'); document.fullscreenElement ? document.exitFullscreen() : el.requestFullscreen?.().catch(() => toast('当前浏览器不支持全屏')); };
@@ -490,120 +510,95 @@ function renderTune() {
     $('#fitClear').onclick = () => { boardCar = null; saveBoard(); setup(); };
   }
 }
-/* ---------- steering (ported from the mini program's AKM tools) ---------- */
-const STEER_MODES = [['off', '关'], ['target', '三段目标'], ['rack', '横杆几何'], ['measured', '实测回放'], ['rdx', 'RDX 参考']];
-const RACK_FIELDS = [['pivotWidth', '转向轴心间距'], ['rackWidth', '横杆内球头间距'], ['rackOffset', '内球头前后偏移'], ['armInward', '轮端球头向内偏移'], ['armRearward', '轮端球头前后偏移'], ['travel', '横杆单侧最大行程']];
-let steer = Object.assign({ mode: 'off', pos: 0, scale: false, stages: { early: 2, middle: 10, end: 4 }, maximum: 60, rack: {}, rackOn: null, measured: null }, store.get('steer', {}));
-const saveSteer = () => store.set('steer', steer);
-const steerCtx = () => SteeringProfile.context({ wheelbase: board.wheelbase, frontTrack: board.frontTrack, frontToe: board.frontToe }, {});
-function relationOf(left, right, pos) {
-  const c = steerCtx(); const dir = pos > 0 ? 'right' : 'left';
-  const inner = dir === 'left' ? left : -right, outer = dir === 'left' ? right : -left, rad = Math.PI / 180;
-  const diff = Math.round((left - right) * 10) / 10;
-  const percent = pos !== 0 && inner > 0 && outer > 0 && c ? ((1 / Math.tan(outer * rad) - 1 / Math.tan(inner * rad)) * c.wheelbase / c.track * 100).toFixed(1) + '%' : '—';
-  const relation = pos === 0 ? '回中' : inner < 0 || outer < 0 ? '两轮异向' : diff === 0 ? '平行' : diff > 0 ? '正阿克曼' : '反阿克曼';
-  return { left, right, difference: diff.toFixed(1), percent, relation };
+/* ---------- AKM：满舵内轮角 + 阿克曼 % ---------- */
+const AKM_PRESETS = [[-40, '反阿克曼'], [0, '平行'], [30, '轻微正'], [70, '正阿克曼'], [100, '理想']];
+let akm = Object.assign({ pos: 0, maxIn: 55, pct: 30, lines: true, scale: false }, store.get('akm', {}));
+const saveAkm = () => store.set('akm', akm);
+const RAD = Math.PI / 180;
+// Outer angle for a given inner angle so that (cot outer − cot inner) · L / T = pct / 100.
+function outerFor(inner, pct, L, T) {
+  if (inner <= 0) return 0;
+  const c = 1 / Math.tan(inner * RAD) + pct / 100 * T / L;
+  if (c <= 0) return 89.9;                       // anti-Ackermann so strong the outer wheel passes 90°
+  return Math.min(89.9, Math.atan(1 / c) / RAD);
+}
+function akmAt(pos) {
+  const L = board.wheelbase, T = board.frontTrack, k = Math.min(1, Math.abs(pos) / 100);
+  const inner = Math.round(akm.maxIn * k * 10) / 10, outer = Math.round(outerFor(inner, akm.pct, L, T) * 10) / 10;
+  const toe = board.frontToe;
+  // Absolute headings (positive = points left), static toe added on top.
+  const left = pos < 0 ? inner : pos > 0 ? -outer : 0, right = pos < 0 ? outer : pos > 0 ? -inner : 0;
+  const centerGap = inner > 0 && outer > 0 ? Math.abs(L * (1 / Math.tan(outer * RAD) - 1 / Math.tan(inner * RAD)) - T) : null;
+  const diff = Math.round((inner - outer) * 10) / 10;
+  return { inner, outer, diff, left: Math.round((left - toe) * 10) / 10, right: Math.round((right + toe) * 10) / 10, centerGap,
+    relation: pos === 0 ? '回中' : Math.abs(akm.pct) < 3 ? '平行' : akm.pct > 0 ? '正阿克曼' : '反阿克曼',
+    radius: inner > 0 ? L / Math.tan(inner * RAD) + T / 2 : null };
 }
 function steeringNow() {
-  const pos = steer.pos, c = steerCtx();
-  if (steer.mode === 'off' || !c) return { draw: null };
-  if (steer.mode === 'target') {
-    const s = SteeringProfile.stagedReference(c, steer.stages, steer.maximum);
-    if (s.error) return { draw: null, error: s.error };
-    const r = SteeringProfile.sample(s.profile, pos, c);
-    if (r.error) return { draw: null, error: r.error };
-    return { draw: Object.assign({}, r.result, { showScale: steer.scale }), read: r.result };
-  }
-  if (steer.mode === 'measured') {
-    if (!steer.measured) return { draw: null, error: '还没有实测记录：把实车打到对应档位，量两轮角度后记录' };
-    const r = SteeringProfile.sample(steer.measured, pos, c);
-    if (r.error) return { draw: null, error: r.error };
-    return { draw: Object.assign({}, r.result, { showScale: steer.scale }), read: r.result };
-  }
-  if (steer.mode === 'rack') {
-    if (!steer.rackOn) return { draw: null, error: '填好横杆尺寸后点「应用」' };
-    const r = RackSteering.sample(steer.rackOn, pos, board.frontToe, board.frontTrack);
-    if (r.error) return { draw: null, error: r.error };
-    return { draw: Object.assign({}, r.result, { showScale: steer.scale }), read: Object.assign(relationOf(r.result.left, r.result.right, pos), { sourceText: r.result.sourceText }) };
-  }
-  if (steer.mode === 'rdx') {
-    const r = RdxReference.sample(pos, board.frontToe, board.frontTrack);
-    return { draw: Object.assign({}, r, { showScale: steer.scale }), read: Object.assign(relationOf(r.left, r.right, pos), { sourceText: r.sourceText }) };
-  }
-  return { draw: null };
+  const r = akmAt(akm.pos);
+  return { draw: { left: r.left, right: r.right, track: board.frontTrack, showScale: akm.scale, target: false,
+    sourceText: akm.pos === 0 ? '回中' : `阿克曼 ${akm.pct}%` }, read: r };
 }
-function renderWheelRead(st) {
-  const dock = $('#wheelDock'); if (!dock) return;
-  dock.hidden = steer.mode === 'off';
-  const w = $('#steerWheel'); w.style.transform = `rotate(${steer.pos * 1.8}deg)`; w.setAttribute('aria-valuenow', steer.pos);
-  $('#steerPos').value = steer.pos;
-  const pos = steer.pos, where = pos === 0 ? '回中' : (pos < 0 ? '左 ' : '右 ') + Math.abs(pos) + '%';
-  $('#wheelRead').innerHTML = st.error ? `<b>${where}</b><p class="warn">${esc(st.error)}</p>` : st.read ? `<b>${where} · ${esc(st.read.relation)}</b>
-    <div class="wr-grid"><div><span>左轮</span>${st.read.left}°</div><div><span>右轮</span>${st.read.right}°</div><div><span>角差</span>${st.read.difference}°</div><div><span>阿克曼</span>${st.read.percent}</div></div>
-    <p>${esc(st.read.sourceText || '')}</p>` : '';
+const pctLabel = p => `${p > 0 ? '+' : ''}${p}%`;
+function renderWheelRead() {
+  if (!$('#akmRead')) return;
+  const r = akmAt(akm.pos), pos = akm.pos;
+  $('#steerWheel').style.transform = `rotate(${pos * 1.8}deg)`; $('#steerWheel').setAttribute('aria-valuenow', pos);
+  $('#steerPos').value = pos; $('#steerPos').style.setProperty('--p', ((pos + 100) / 2) + '%');
+  $('#akmWhere').textContent = pos === 0 ? '回中' : `${pos < 0 ? '左' : '右'} ${Math.abs(pos)}%`;
+  $('#akmRel').textContent = r.relation;
+  $('#akmRead').innerHTML = `<div><span>内轮</span><b>${r.inner}°</b></div><div><span>外轮</span><b>${r.outer}°</b></div><div><span>角差</span><b>${r.diff > 0 ? '+' : ''}${r.diff}°</b></div>
+    <div><span>转向中心错位</span><b>${r.centerGap == null ? '—' : r.centerGap.toFixed(1) + '<small>mm</small>'}</b></div>`;
+  renderAkmChart();
 }
-function steerPanelHtml() {
-  const n = (k, l, v, u = '°') => `<label class="mini-f"><span>${l}</span><div class="unit"><input data-sv="${k}" inputmode="decimal" value="${v ?? ''}"><em>${u}</em></div></label>`;
-  const scale = `<label class="switch-row small"><span>轮角刻度</span><input type="checkbox" id="steerScale" ${steer.scale ? 'checked' : ''}><i class="switch"></i></label>`;
-  if (steer.mode === 'off') return `<p class="muted mini">打开后，前轮会按方向盘位置画出左右轮角。方向盘只是软件里的转向档位（左负右正），不是遥控器读数。</p>`;
-  if (steer.mode === 'target') return `<p class="muted mini">设定小 / 中 / 大打角（20% / 50% / 100%）时想要的内外轮角差，中间线性过渡，左右对称。这是目标，不是实车结果。</p>
-    <div class="mini-grid">${n('early', '小打角角差', steer.stages.early)}${n('middle', '中打角角差', steer.stages.middle)}${n('end', '大打角角差', steer.stages.end)}${n('maximum', '满舵内轮角', steer.maximum)}</div>${scale}`;
-  if (steer.mode === 'rack') return `<p class="muted mini">填实测毫米尺寸，按对称二维平面横杆模型计算两轮角度。不含 Camber / Caster / KPI、球头高度差和间隙。前后偏移向车尾为正；轴心间距不等于轮距。</p>
-    <div class="mini-grid">${RACK_FIELDS.map(([k, l]) => n('rack.' + k, l, steer.rack[k], 'mm')).join('')}</div>
-    <div class="mini-actions"><button class="btn small primary" id="rackApply">应用</button>${steer.rackOn ? '<button class="btn small secondary" id="rackOff">停用</button>' : ''}</div><p class="warn mini" id="rackErr"></p>${scale}`;
-  if (steer.mode === 'measured') {
-    const rows = steer.measured ? SteeringProfile.rows(steer.measured) : [], sym = steer.measured ? SteeringProfile.symmetry(steer.measured) : [];
-    return `<p class="muted mini">先把软件和遥控器打到同一档位，用外部量具量两轮的俯视绝对角（相对车身中线朝左为正），填好后点记录。先测回中，再分别测左右。只在已测范围内回放。</p>
-      <div class="mini-grid">${n('mLeft', '左轮角', '')}${n('mRight', '右轮角', '')}</div>
-      <div class="mini-actions"><button class="btn small primary" id="mRecord">记录当前档位</button>${rows.length ? '<button class="btn small secondary" id="mClear">清空重测</button>' : ''}</div><p class="warn mini" id="mErr"></p>
-      ${rows.length ? `<table class="m-table"><tr><th>档位</th><th>左</th><th>右</th><th>角差</th></tr>${rows.map(r => `<tr data-pos="${r.position}"><td>${r.label}</td><td>${r.left}°</td><td>${r.right}°</td><td>${r.difference}°</td></tr>`).join('')}</table>` : ''}
-      ${sym.length ? `<p class="muted mini">左右对称差（内 / 外）：${sym.map(s => `${s.position}% ${s.inner}° / ${s.outer}°`).join('，')}</p>` : ''}${scale}`;
-  }
-  if (steer.mode === 'rdx') return `<p class="muted mini">RDX 满舵端点（内 73° / 外 77°）是从图片估算的，中间过程是线性插值，只作示意，不是厂家数据。</p>${scale}`;
-  return '';
+function renderAkmChart() {
+  const box = $('#akmChart'); if (!box) return;
+  const W = 320, H = 190, P = { l: 30, r: 10, t: 10, b: 24 }, L = board.wheelbase, T = board.frontTrack;
+  const pts = Array.from({ length: 51 }, (_, i) => { const k = i / 50, inner = akm.maxIn * k, outer = outerFor(inner, akm.pct, L, T); return { k, inner, outer, diff: inner - outer }; });
+  const ymax = Math.max(10, Math.ceil(Math.max(...pts.map(p => Math.max(p.inner, p.outer))) / 10) * 10), ymin = Math.min(0, Math.floor(Math.min(...pts.map(p => p.diff)) / 5) * 5);
+  const x = k => P.l + k * (W - P.l - P.r), y = v => P.t + (ymax - v) / (ymax - ymin) * (H - P.t - P.b);
+  const path = key => pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.k).toFixed(1)} ${y(p[key]).toFixed(1)}`).join('');
+  const grid = []; for (let v = ymin; v <= ymax; v += ymax - ymin > 60 ? 20 : 10) grid.push(v);
+  const k = Math.abs(akm.pos) / 100, cur = pts[Math.round(k * 50)];
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="akm-svg" role="img" aria-label="内外轮角随方向变化的曲线">
+    ${grid.map(v => `<line x1="${P.l}" x2="${W - P.r}" y1="${y(v)}" y2="${y(v)}" class="g${v === 0 ? ' z' : ''}"/><text x="${P.l - 6}" y="${y(v) + 3}" text-anchor="end">${v}°</text>`).join('')}
+    ${[0, .5, 1].map(t => `<text x="${x(t)}" y="${H - 6}" text-anchor="middle">${Math.round(t * 100)}%</text>`).join('')}
+    <path d="${path('diff')}" class="cd"/><path d="${path('outer')}" class="co"/><path d="${path('inner')}" class="ci"/>
+    <line x1="${x(k)}" x2="${x(k)}" y1="${P.t}" y2="${H - P.b}" class="cur"/>
+    <circle cx="${x(k)}" cy="${y(cur.inner)}" r="4" class="ci-dot"/><circle cx="${x(k)}" cy="${y(cur.outer)}" r="4" class="co-dot"/></svg>`;
 }
-function bindSteering() {
-  const seg = $('#steerSeg'), panel = $('#steerPanel');
-  const refresh = () => { $$('#steerSeg button').forEach(b => b.classList.toggle('on', b.dataset.mode === steer.mode)); moveSeg(seg); panel.innerHTML = steerPanelHtml(); bindPanel(); drawBoard(); };
-  seg.onclick = e => { const b = e.target.closest('[data-mode]'); if (!b) return; steer.mode = b.dataset.mode; if (steer.mode === 'off') steer.pos = 0; saveSteer(); refresh(); };
-  function bindPanel() {
-    panel.querySelectorAll('[data-sv]').forEach(inp => inp.addEventListener('input', () => {
-      const k = inp.dataset.sv, v = inp.value.trim();
-      if (k.startsWith('rack.')) { steer.rack[k.slice(5)] = v; saveSteer(); return; }
-      if (k === 'mLeft' || k === 'mRight') return;
-      const num = parseFloat(v); if (!isFinite(num)) return;
-      if (k === 'maximum') steer.maximum = num; else steer.stages[k] = num;
-      saveSteer(); drawBoard();
-    }));
-    const sc = $('#steerScale'); if (sc) sc.onchange = () => { steer.scale = sc.checked; saveSteer(); drawBoard(); };
-    const ra = $('#rackApply'); if (ra) ra.onclick = () => {
-      const g = RackSteering.validate(steer.rack);
-      const err = !g ? '请把六项尺寸都填成有效数字（横杆内球头间距要小于轴心间距）' : [-100, -50, 50, 100].map(p => RackSteering.sample(g, p, board.frontToe, board.frontTrack).error).find(Boolean);
-      if (err) { $('#rackErr').textContent = err; return; }
-      steer.rackOn = g; saveSteer(); refresh(); toast('横杆几何已应用');
-    };
-    const ro = $('#rackOff'); if (ro) ro.onclick = () => { steer.rackOn = null; saveSteer(); refresh(); };
-    const mr = $('#mRecord'); if (mr) mr.onclick = () => {
-      const c = steerCtx(); if (!c) return;
-      if (!steer.measured || !SteeringProfile.sameContext(SteeringProfile.restore(steer.measured)?.context, c)) steer.measured = SteeringProfile.create(c, 'measured');
-      const left = parseFloat($('[data-sv=mLeft]').value), right = parseFloat($('[data-sv=mRight]').value);
-      const r = SteeringProfile.insert(steer.measured, { position: steer.pos, left, right });
-      if (r.error) { $('#mErr').textContent = r.error; return; }
-      steer.measured = r.profile; saveSteer(); refresh(); toast('已记录 ' + (steer.pos === 0 ? '回中' : steer.pos + '%'));
-    };
-    const mc = $('#mClear'); if (mc) mc.onclick = () => { if (confirm('清空这组实测？')) { steer.measured = null; saveSteer(); refresh(); } };
-    panel.querySelectorAll('tr[data-pos]').forEach(tr => tr.onclick = () => setPos(+tr.dataset.pos));
-  }
-  const setPos = p => { steer.pos = Math.max(-100, Math.min(100, Math.round(p))); saveSteer(); drawBoard(); };
+function bindAkm() {
+  const setPos = p => { akm.pos = Math.max(-100, Math.min(100, Math.round(p))); saveAkm(); drawBoard(); };
+  const syncSet = () => {
+    $('#akmMax').value = akm.maxIn; $('#akmMaxOut').innerHTML = `${akm.maxIn}<small>°</small>`;
+    $('#akmPct').value = akm.pct; $('#akmPctOut').innerHTML = `${pctLabel(akm.pct)}<small> ${Math.abs(akm.pct) < 3 ? '平行' : akm.pct > 0 ? '正' : '反'}</small>`;
+    [['akmMax', 20, 80], ['akmPct', -100, 120]].forEach(([id, lo, hi]) => $('#' + id).style.setProperty('--p', ((+$('#' + id).value - lo) / (hi - lo) * 100) + '%'));
+    $$('.akm-presets .chip').forEach(c => c.classList.toggle('on', +c.dataset.pct === akm.pct));
+    $('#akmLines').checked = akm.lines; $('#akmScale').checked = akm.scale;
+  };
   $('#steerPos').oninput = e => setPos(+e.target.value);
-  const wheel = $('#steerWheel');
-  let start = null;
-  wheel.addEventListener('pointerdown', e => { wheel.setPointerCapture(e.pointerId); const r = wheel.getBoundingClientRect(); start = { cx: r.left + r.width / 2, cy: r.top + r.height / 2, a: Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2)), pos: steer.pos }; });
-  wheel.addEventListener('pointermove', e => { if (!start) return; let d = Math.atan2(e.clientY - start.cy, e.clientX - start.cx) - start.a; d = Math.atan2(Math.sin(d), Math.cos(d)); start.pos += d * 180 / Math.PI / 1.8; start.a += d; setPos(start.pos); });
+  $('#akmCenter').onclick = () => setPos(0);
+  $('#akmMax').oninput = e => { akm.maxIn = +e.target.value; saveAkm(); syncSet(); drawBoard(); };
+  $('#akmPct').oninput = e => { akm.pct = +e.target.value; saveAkm(); syncSet(); drawBoard(); };
+  $$('.akm-presets .chip').forEach(c => c.onclick = () => { akm.pct = +c.dataset.pct; if (!akm.pos) akm.pos = -70; saveAkm(); syncSet(); drawBoard(); });
+  $('#akmLines').onchange = e => { akm.lines = e.target.checked; saveAkm(); drawBoard(); };
+  $('#akmScale').onchange = e => { akm.scale = e.target.checked; saveAkm(); drawBoard(); };
+  const calcMeasured = () => {
+    const i = parseFloat($('#mIn').value), o = parseFloat($('#mOut').value), out = $('#mResult'), btn = $('#mApply');
+    if (!(i > 0 && i < 89 && o > 0 && o < 89)) { out.textContent = ''; btn.hidden = true; return null; }
+    const pct = Math.round((1 / Math.tan(o * RAD) - 1 / Math.tan(i * RAD)) * board.wheelbase / board.frontTrack * 100);
+    out.innerHTML = `按轴距 ${board.wheelbase} / 前轮距 ${board.frontTrack} mm 算，你的车满舵是 <b class="acc">${pctLabel(pct)} 阿克曼</b>（${Math.abs(pct) < 3 ? '接近平行' : pct > 0 ? '正阿克曼' : '反阿克曼'}，角差 ${(i - o).toFixed(1)}°）。`;
+    btn.hidden = false; return { i, pct };
+  };
+  ['mIn', 'mOut'].forEach(id => $('#' + id).oninput = calcMeasured);
+  $('#mApply').onclick = () => { const m = calcMeasured(); if (!m) return; akm.maxIn = Math.round(Math.max(20, Math.min(80, m.i))); akm.pct = Math.max(-100, Math.min(120, Math.round(m.pct / 5) * 5)); akm.pos = -100; saveAkm(); syncSet(); drawBoard(); toast('已按实测设置满舵角和阿克曼'); };
+  const wheel = $('#steerWheel'); let start = null;
+  wheel.addEventListener('pointerdown', e => { wheel.setPointerCapture(e.pointerId); const r = wheel.getBoundingClientRect(); start = { cx: r.left + r.width / 2, cy: r.top + r.height / 2, a: Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2)), pos: akm.pos }; });
+  wheel.addEventListener('pointermove', e => { if (!start) return; let d = Math.atan2(e.clientY - start.cy, e.clientX - start.cx) - start.a; d = Math.atan2(Math.sin(d), Math.cos(d)); start.pos += d / RAD / 1.8; start.a += d; setPos(start.pos); });
   wheel.addEventListener('pointerup', () => { start = null; });
   wheel.addEventListener('dblclick', () => setPos(0));
-  wheel.addEventListener('keydown', e => { const k = { ArrowLeft: -5, ArrowRight: 5, ArrowDown: -1, ArrowUp: 1 }[e.key]; if (k) { e.preventDefault(); setPos(steer.pos + k); } if (e.key === 'Home' || e.key === '0') setPos(0); });
-  refresh();
+  wheel.addEventListener('keydown', e => { const k = { ArrowLeft: -5, ArrowRight: 5, ArrowDown: -1, ArrowUp: 1 }[e.key]; if (k) { e.preventDefault(); setPos(akm.pos + k); } if (e.key === 'Home' || e.key === '0') setPos(0); });
+  syncSet(); renderWheelRead();
 }
 function stepHandler(e) {
   const b = e.target.closest('[data-step]'); if (!b) return;
@@ -639,8 +634,8 @@ function drawBoard() {
   const st0 = steeringNow();
   const sc = boardCar && rig.shellOn && BY_ID.get(boardCar);
   const g = SetupBoard.draw(ctx, rect.width, rect.height, ok ? cal.scale : { x: 3.78, y: 3.78 }, board, !!ok, null, st0.draw, false, null,
-    { tire: { w: rig.tireW, d: rig.tireD }, shell: sc && sc.wb ? { wb: sc.wb, ft: sc.ft, rt: sc.rt, name: sc.name } : null });
-  renderWheelRead(st0);
+    { tire: { w: rig.tireW, d: rig.tireD }, shell: sc && sc.wb ? { wb: sc.wb, ft: sc.ft, rt: sc.rt, name: sc.name } : null, akmLines: akm.lines });
+  renderWheelRead();
   const st = $('#boardStatus');
   st.classList.toggle('ok', !!ok);
   st.innerHTML = '<i></i>' + (ok ? '已按尺校准 · 1:1' : '未校准 · 仅示意') + (g.fits ? '' : ' · 超出屏幕');
@@ -1130,7 +1125,7 @@ function renderTools() {
     const logs = store.get('toolLogs', []);
     body.innerHTML = `<div class="form-card"><h3>一次改动，一次记录</h3>
       <div class="f-grid">${LOG_FIELDS.map(([k, l]) => `<label class="f ${['change', 'before', 'after'].includes(k) ? 'span2' : ''}"><span>${l}</span><textarea data-g="log" data-k="${k}" rows="${['change', 'before', 'after'].includes(k) ? 2 : 1}" maxlength="300">${esc((toolDraft.log || {})[k] || '')}</textarea></label>`).join('')}</div>
-      <button class="btn primary" id="saveLog">保存记录</button><p class="muted small-note">会同时存下调车板当前的尺寸、前束、外倾和转向设置。只存在这台设备的浏览器里，最多 50 条。</p></div>
+      <button class="btn primary" id="saveLog">保存记录</button><p class="muted small-note">会同时存下调车板当前的尺寸、前束、外倾、Caster 和阿克曼设置。只存在这台设备的浏览器里，最多 50 条。</p></div>
       ${cmpIds.length ? `<div class="form-card" id="cmpCard">${cmpHtml(logs)}</div>` : ''}
       <div class="log-list">${logs.length ? logs.map(l => `<article class="log-item ${cmpIds.includes(l.id) ? 'picked' : ''}"><header><b>${esc(l.fields.car)}</b><span>${esc(l.date)}</span></header>
         <p>${esc(l.fields.change)}</p><small>${esc([l.fields.surface, l.fields.tyre].filter(Boolean).join(' · '))}</small>
@@ -1148,9 +1143,9 @@ function cmpHtml(logs) {
   if (!a || !b) return `<h3>A / B 设置对比</h3><p class="muted">已选 ${cmpIds.length} / 2 条，再选一条。</p>`;
   return `<h3>A / B 设置对比</h3><p class="muted">A：${esc(a.fields.car)} · ${esc(a.date)} → B：${esc(b.fields.car)} · ${esc(b.date)}。差值为 B − A，没记录的值不补零。</p>
     <table class="m-table cmp-table"><tr><th></th><th>A</th><th>B</th><th>差值</th></tr>${CMP_FIELDS.map(([k, l, u]) => { const x = a.board?.[k], y = b.board?.[k]; const d = x == null || y == null ? null : Math.round((y - x) * 10) / 10; return `<tr><td>${l}</td><td>${x ?? '未记录'}${x == null ? '' : u}</td><td>${y ?? '未记录'}${y == null ? '' : u}</td><td class="${d ? (d > 0 ? 'up' : 'down') : ''}">${d == null ? '—' : (d > 0 ? '+' : '') + d + u}</td></tr>`; }).join('')}
-    <tr><td>转向模式</td><td>${esc(modeName(a.steer?.mode))}</td><td>${esc(modeName(b.steer?.mode))}</td><td></td></tr></table>`;
+    <tr><td>满舵内轮角</td><td>${a.akm ? a.akm.maxIn + '°' : '未记录'}</td><td>${b.akm ? b.akm.maxIn + '°' : '未记录'}</td><td>${a.akm && b.akm ? ((b.akm.maxIn - a.akm.maxIn) > 0 ? '+' : '') + (b.akm.maxIn - a.akm.maxIn) + '°' : '—'}</td></tr>
+    <tr><td>阿克曼</td><td>${a.akm ? pctLabel(a.akm.pct) : '未记录'}</td><td>${b.akm ? pctLabel(b.akm.pct) : '未记录'}</td><td>${a.akm && b.akm ? pctLabel(b.akm.pct - a.akm.pct) : '—'}</td></tr></table>`;
 }
-const modeName = m => (STEER_MODES.find(x => x[0] === m) || ['', '未记录'])[1];
 function bindTools() {
   const calc = () => {
     const t = SetupTools.toe(toolDraft.toe || {}), g = SetupTools.camberGain(toolDraft.gain || {}), c = SetupTools.corner(toolDraft.corner || {});
@@ -1166,13 +1161,13 @@ function bindTools() {
     if (!f.car || !f.change || !f.after) return toast('至少填写车架、这次改动和试车结果');
     const logs = store.get('toolLogs', []);
     if (logs.length >= 50) return toast('已存满 50 条，请先删掉旧记录');
-    logs.unshift({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: new Date().toLocaleDateString('zh-CN'), fields: f, board: { ...board }, steer: { mode: steer.mode, stages: steer.stages, maximum: steer.maximum }, car: boardCar });
+    logs.unshift({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: new Date().toLocaleDateString('zh-CN'), fields: f, board: { ...board }, akm: { maxIn: akm.maxIn, pct: akm.pct }, car: boardCar });
     store.set('toolLogs', logs); toolDraft.log = {}; store.set('toolDraft', toolDraft); toast('已保存，附上了调车板当前设置'); renderTools();
   };
   $$('#toolBody [data-log-del]').forEach(b => b.onclick = () => { if (!confirm('删除这条记录？建议先复制留存。')) return; store.set('toolLogs', store.get('toolLogs', []).filter(l => l.id !== b.dataset.logDel)); cmpIds = cmpIds.filter(x => x !== b.dataset.logDel); renderTools(); });
   $$('#toolBody [data-log-cmp]').forEach(b => b.onclick = () => { const id = b.dataset.logCmp; if (cmpIds.includes(id)) cmpIds = cmpIds.filter(x => x !== id); else if (cmpIds.length < 2) cmpIds.push(id); else return toast('已选两条，再点已选的可取消'); renderTools(); });
   $$('#toolBody [data-log-load]').forEach(b => b.onclick = () => { const l = store.get('toolLogs', []).find(x => x.id === b.dataset.logLoad); const v = l && SetupBoard.validate(l.board); if (!v) return toast('这条记录的尺寸无效'); board = v; saveBoard(); location.hash = '#/setup'; toast('已载入记录里的调车板设置'); });
-  $$('#toolBody [data-log-copy]').forEach(b => b.onclick = () => { const l = store.get('toolLogs', []).find(x => x.id === b.dataset.logCopy); if (!l) return; copy(['Dou 调车记录 · ' + l.date].concat(LOG_FIELDS.map(([k, n]) => n + '：' + (l.fields[k] || '—')), CMP_FIELDS.map(([k, n, u]) => n + '：' + (l.board?.[k] ?? '未记录') + u), ['转向：' + modeName(l.steer?.mode)]).join('\n')); });
+  $$('#toolBody [data-log-copy]').forEach(b => b.onclick = () => { const l = store.get('toolLogs', []).find(x => x.id === b.dataset.logCopy); if (!l) return; copy(['Dou 调车记录 · ' + l.date].concat(LOG_FIELDS.map(([k, n]) => n + '：' + (l.fields[k] || '—')), CMP_FIELDS.map(([k, n, u]) => n + '：' + (l.board?.[k] ?? '未记录') + u), [l.akm ? `满舵内轮角：${l.akm.maxIn}° · 阿克曼：${pctLabel(l.akm.pct)}` : '阿克曼：未记录']).join('\n')); });
 }
 
 /* ---------- 车架资料库 ---------- */
