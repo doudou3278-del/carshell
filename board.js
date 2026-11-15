@@ -12,7 +12,7 @@ function normalizeColors(input) {
 }
 var LIMITS = {
   wheelbase: [50, 300], frontTrack: [30, 250], rearTrack: [30, 250],
-  frontToe: [-5, 5], rearToe: [-5, 5], frontCamber: [-20, 20], rearCamber: [-20, 20]
+  frontToe: [-5, 5], rearToe: [-10, 10], frontCamber: [-20, 20], rearCamber: [-20, 20], caster: [0, 25]
 }
 function validate(values) {
   var result = {}
@@ -21,7 +21,7 @@ function validate(values) {
     var key = keys[i]
     var raw = values[key]
     // Older saved dimensions predate camber; retain them and default only the new fields.
-    if (key.indexOf('Camber') !== -1 && raw === undefined) raw = 0
+    if ((key.indexOf('Camber') !== -1 || key === 'caster') && raw === undefined) raw = 0
     var value = Number(raw)
     if (raw === null || String(raw).trim() === '' || !isFinite(value) || value < LIMITS[key][0] || value > LIMITS[key][1]) return null
     result[key] = Math.round(value * 10) / 10
@@ -47,7 +47,10 @@ function geometry(width, height, scale, values) {
       (values.wheelbase + 50) * scale.y <= height
   }
 }
-function draw(ctx, width, height, scale, values, calibrated, reference, steering, transparentBackground, lineColors) {
+function draw(ctx, width, height, scale, values, calibrated, reference, steering, transparentBackground, lineColors, extra) {
+  extra = extra || {}
+  var tireW = extra.tire && extra.tire.w > 0 ? extra.tire.w : 8, tireD = extra.tire && extra.tire.d > 0 ? extra.tire.d : 24
+  var hw = tireW / 2, hd = tireD / 2
   var colors = normalizeColors(lineColors)
   if (steering) values = Object.assign({}, values, { frontTrack: steering.track })
   var g = geometry(width, height, scale, values)
@@ -118,7 +121,7 @@ function draw(ctx, width, height, scale, values, calibrated, reference, steering
         ctx.setLineDash([])
       }
       // Tire outlines are visual direction guides; rotate in mm before X/Y calibration.
-      var corners = [[-4, -12], [4, -12], [4, 12], [-4, 12]].map(function(point) {
+      var corners = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].map(function(point) {
         return [xx + (point[0] * Math.cos(angle) + point[1] * Math.sin(angle)) * scale.x,
           yy + (-point[0] * Math.sin(angle) + point[1] * Math.cos(angle)) * scale.y]
       })
@@ -126,8 +129,8 @@ function draw(ctx, width, height, scale, values, calibrated, reference, steering
         var next = corners[(index + 1) % corners.length]
         line(point[0], point[1], next[0], next[1], colors.wheels, front && steering ? 2.5 : 1.5)
       })
-      var dx = Math.sin(angle) * 22 * scale.x
-      var dy = Math.cos(angle) * 22 * scale.y
+      var dx = Math.sin(angle) * (hd + 10) * scale.x
+      var dy = Math.cos(angle) * (hd + 10) * scale.y
       line(xx - dx, yy - dy, xx + dx, yy + dy, colors.guides, 2)
     })
   }
@@ -148,6 +151,23 @@ function draw(ctx, width, height, scale, values, calibrated, reference, steering
         xx - Math.sin(r) * 12 * scale.x, yy + Math.cos(r) * 12 * scale.y, colors.wheels, 2)
     })
   })
+  if (extra.shell && extra.shell.wb > 0) {
+    // Body arch centres (measured at the wheel arches) drawn over the chassis wheels.
+    var sh = extra.shell, arch = '#ffc66d'
+    ;[[true, sh.ft], [false, sh.rt]].forEach(function(pair) {
+      if (!(pair[1] > 0)) return
+      var yy = cy + (pair[0] ? -1 : 1) * sh.wb * scale.y / 2
+      ;[-1, 1].forEach(function(side) {
+        var xx = cx + side * pair[1] * scale.x / 2, rx = (hw + 3) * scale.x, ry = (hd + 3) * scale.y
+        ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.strokeStyle = arch; ctx.lineWidth = 1.5
+        if (ctx.ellipse) ctx.ellipse(xx, yy, rx, ry, 0, 0, Math.PI * 2); else ctx.rect(xx - rx, yy - ry, rx * 2, ry * 2)
+        ctx.stroke(); ctx.setLineDash([])
+        line(xx - 4, yy, xx + 4, yy, arch, 1); line(xx, yy - 4, xx, yy + 4, arch, 1)
+      })
+    })
+    text('车壳轮眉' + (sh.name ? '：' + sh.name : ''), cx, cy - sh.wb * scale.y / 2 - hd * scale.y - 22, arch, 'center')
+  }
+  if (Number(values.caster)) text('Caster ' + values.caster + '°', cx + 12, cy + 28, '#c8ffd9')
   text('轴距 ' + values.wheelbase + ' mm', cx + 12, cy - 10, '#c8ffd9')
   text(steering ? (steering.sourceText || (steering.target ? '目标轮廓' : '转向参考')) + '：左 ' + steering.left + '° / 右 ' + steering.right + '°（含前束）' : '前束参考：前 ' + values.frontToe + '° / 后 ' + values.rearToe + '°', cx + 12, cy + 12)
   if (!calibrated) text('未校准 · 网格尺寸仅为示意', width / 2, height - 18, '#ffc66d', 'center')

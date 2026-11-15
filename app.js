@@ -335,14 +335,19 @@ function overlaySvg(list) {
 }
 
 /* ---------- setup board ---------- */
-const DEFAULT_BOARD = { wheelbase: 98, frontTrack: 76, rearTrack: 78, frontToe: 0, rearToe: 0, frontCamber: 0, rearCamber: 0 };
+const DEFAULT_BOARD = { wheelbase: 98, frontTrack: 76, rearTrack: 78, frontToe: 0, rearToe: 0, frontCamber: 0, rearCamber: 0, caster: 0 };
+// Tyre outline defaults per scale — starting points only; the user should type their own tyre's size.
+const SCALES = { '1/24': { d: 30, w: 10 }, '1/28': { d: 24, w: 8 }, '1/10': { d: 64, w: 26 } };
+let rig = Object.assign({ scale: '1/24', tireD: 30, tireW: 10, shellOn: true }, store.get('rig', {}));
+const saveRig = () => { store.set('rig', rig); drawBoard(); };
 let board = SetupBoard.validate(store.get('board', DEFAULT_BOARD)) || { ...DEFAULT_BOARD };
 let boardCar = store.get('boardCar', null);
 let cal = store.get('calibration', null);
 const screenKey = () => [screen.width, screen.height, devicePixelRatio].join('x');
 const CTL = [
   ['wheelbase', '轴距', 50, 300, 0.5, 'mm'], ['frontTrack', '前轮距', 30, 250, 0.5, 'mm'], ['rearTrack', '后轮距', 30, 250, 0.5, 'mm'],
-  ['frontToe', '前束（前）', -5, 5, 0.5, '°'], ['rearToe', '前束（后）', -5, 5, 0.5, '°'], ['frontCamber', '外倾（前）', -20, 20, 0.5, '°'], ['rearCamber', '外倾（后）', -20, 20, 0.5, '°']
+  ['frontToe', '前束（前）', -5, 5, 0.5, '°'], ['rearToe', '前束（后）', -10, 10, 0.5, '°'], ['frontCamber', '外倾（前）', -20, 20, 0.5, '°'], ['rearCamber', '外倾（后）', -20, 20, 0.5, '°'],
+  ['caster', '主销后倾 Caster', 0, 25, 0.5, '°']
 ];
 function setup() {
   const q = parseQuery();
@@ -352,10 +357,14 @@ function setup() {
   <section class="wrap lib-head page-enter lib-head-row"><div><h1>电子调车板</h1><p>按真实毫米绘制。先用尺子校准一次，再对照前束、外倾和轮距。</p></div><span class="mini-actions"><a class="btn secondary" href="#/chassis">车架资料</a><a class="btn secondary" href="#/tools">调车工具与记录 ${I.arrow}</a></span></section>
   <section class="wrap setup">
     <div class="controls">
+      <div class="ctl scale-card"><div class="ctl-head"><span>比例与轮胎</span><small class="muted">按你的轮胎改</small></div>
+        <div class="seg seg-full" id="scaleSeg"><i></i>${Object.keys(SCALES).map(k => `<button data-scale="${k}">${k}</button>`).join('')}</div>
+        <div class="mini-grid" style="margin-top:10px"><label class="mini-f"><span>轮胎外径</span><div class="unit"><input id="tireD" inputmode="decimal" value="${rig.tireD}"><em>mm</em></div></label><label class="mini-f"><span>轮胎宽度</span><div class="unit"><input id="tireW" inputmode="decimal" value="${rig.tireW}"><em>mm</em></div></label></div></div>
       <div class="pick-car" id="pickCar" role="button" tabindex="0">${boardCarHtml()}</div>
       ${ctl(CTL[0])}${ctl(CTL[1])}${ctl(CTL[2])}
       <div class="ctl-pair">${ctl(CTL[3])}${ctl(CTL[4])}</div>
       <div class="ctl-pair">${ctl(CTL[5])}${ctl(CTL[6])}</div>
+      ${ctl(CTL[7])}
       <div class="ctl steer-card"><div class="ctl-head"><span>转向 · AKM</span><a class="link-mini" href="#/tools">调车工具 ${I.arrow}</a></div>
         <div class="seg seg-full" id="steerSeg"><i></i>${STEER_MODES.map(([k, l]) => `<button data-mode="${k}">${l}</button>`).join('')}</div>
         <div id="steerPanel"></div></div>
@@ -369,6 +378,11 @@ function setup() {
       </div>
       <div class="board-bar"><span class="status" id="boardStatus"><i></i>未校准</span><span style="display:flex;gap:8px"><button class="btn small secondary" id="calBtn">${I.ruler} 校准</button><button class="round" id="fsBtn" aria-label="全屏">${I.expand}</button></span></div>
     </div>
+  </section>
+  <section class="wrap tune" id="tune">
+    <div class="section-head"><div><p class="eyebrow">RWD DRIFT TUNING</p><h2>后驱漂移调校。</h2><p>参考车友经验和 1/10 后驱教学整理。没有一套适合所有车的数值：每次只改一项，试车后记下来。</p></div></div>
+    <div class="seg tune-seg" id="tuneSeg"><i></i><button data-t="base">起步设定</button><button data-t="fix">症状诊断</button><button data-t="fit">车壳适配</button></div>
+    <div id="tuneBody"></div>
   </section>`;
   CTL.forEach(([k, , , , , u]) => {
     const r = $('#r-' + k);
@@ -381,8 +395,107 @@ function setup() {
   $('#pickCar').onclick = () => openSpot('pick');
   $('#calBtn').onclick = calibrate;
   bindSteering();
+  bindRig();
+  renderTune();
   $('#fsBtn').onclick = () => { const el = $('#boardCard'); document.fullscreenElement ? document.exitFullscreen() : el.requestFullscreen?.().catch(() => toast('当前浏览器不支持全屏')); };
   drawBoard();
+}
+/* ---------- 比例 / 起步设定 / 症状诊断 / 车壳适配 ---------- */
+const SRC = {
+  rcf24: ['RCFans · 1/24 后驱漂移入坑记', 'https://bbs.rcfans.com/forum.php?mod=viewthread&tid=1127598'],
+  rcfTune: ['RCFans · 漂移车就该这么去调', 'https://bbs.rcfans.com/thread-1207519-1-1.html'],
+  rcfYear: ['RCFans · 帮朋友调了一年的车', 'https://rcfans.com/thread-1206165-1-1.html'],
+  rcfJ2: ['RCFans · RWD 后驱漂移基本设定经验', 'https://rcfans.com/thread-752046-1-1.html'],
+  rcfTable: ['RCFans · 漂移车架设定（闹仔调车表）', 'https://www.rcfans.com/thread-401862-1-1.html'],
+  ae: ['1/10 RWD Drift Setup Guide', 'https://www.applianceelectronics.co.uk/blogs/rc-drift-setup-example'],
+  bmr: ['BMR-X Pro 1/24 后驱车架介绍', 'https://k.sina.cn/article_1760441023_68ee32bf00100zhnb.html']
+};
+const BASELINES = {
+  '1/24': { title: '1/24 后驱蚊车', note: '蚊车本身容易过甩，思路是「减甩」：后轮也要给负外倾，场地越小束角可以越大。轴距越长越难控。', src: ['rcf24', 'rcfTune', 'rcfYear', 'rcfJ2'], rows: [
+    ['frontCamber', '前外倾', '−4° ~ −6°', -5, '太大会让转向角变小、后轮抓地变差'],
+    ['rearCamber', '后外倾', '−2° ~ −3°', -2.5, '1/24 必须给后轮负外倾来减甩'],
+    ['frontToe', '前束（单侧）', '0° ~ −1°（外八）', -0.5, '外八有助于横走、入弯'],
+    ['rearToe', '后束（单侧）', '+1° ~ +3°（内八）', 2, '内八多，推力更多指向车身中线；小场地车友会给到更大'],
+    ['caster', '主销后倾', '适量，参考 1/10 的 8° ~ 10°', 8, '帮陀螺仪感受路面、减少抖动；太大车尾会把车头拉离轨迹']] },
+  '1/10': { title: '1/10 后驱漂移', note: '1/10 车相对不容易甩，通常后轮外倾给得比蚊车少。以下是常见的起步值。', src: ['ae', 'rcfTune'], rows: [
+    ['frontCamber', '前外倾', '约 −7°', -7, ''],
+    ['rearCamber', '后外倾', '−2.5° ~ −3°', -2.5, ''],
+    ['frontToe', '前束（单侧）', '总外八约 1°，即单侧 −0.5°', -0.5, ''],
+    ['rearToe', '后束（单侧）', '总内八 2.5° ~ 3°，即单侧约 +1.3°', 1.5, '部分车架后束是固定的'],
+    ['caster', '主销后倾', '8° ~ 10°', 9, '影响回正和反打时前轮的表现']] }
+};
+const FIXES = [
+  { k: 'push', t: '推头 · 转向不足', d: '车头往外跑，尾巴甩不起来，横不过去。', src: ['rcfTable'], acts: [
+    ['frontCamber', -1, '前外倾加大（更负）'], ['rearCamber', 0.5, '后外倾减小'], ['caster', -1, '主销后倾减小'], ['frontTrack', -1, '前轮距减小'], ['rearTrack', -1, '后轮距减小（低速场）']],
+    tips: ['后轮车高差（Droop）加大。'] },
+  { k: 'spin', t: '过甩 · 转向过度', d: '尾巴甩太快、容易打转，反打接不住。蚊车最常见。', src: ['rcfTable', 'rcf24', 'rcfJ2', 'rcfTune'], acts: [
+    ['rearCamber', -0.5, '后外倾加大（蚊车减甩）'], ['frontCamber', 0.5, '前外倾减小'], ['caster', 1, '主销后倾加大'], ['frontTrack', 1, '前轮距加大（比后轮距略大）'], ['rearToe', 0.5, '后束（内八）加大']],
+    tips: ['后轮车高差（Droop）减小。', '正阿克曼别给太多：容易扎弯心，让车尾走得更快。', '轴距越长越难控，可以试短一点的轴距。'] },
+  { k: 'shake', t: '方向抖 · 回正乱', d: '直线或漂移中前轮来回抖，像和陀螺仪打架。', src: ['rcfYear', 'rcfJ2'], acts: [['caster', 1, '主销后倾加一点']],
+    tips: ['先查陀螺仪方向：拉着车尾往左甩，前轮应往左打；往右甩，应往右打。', '陀螺仪感度不够或反向，比角度问题更常见。', '主销后倾适量即可，过大会让大 offset 轮毂加重舵机负担。'] },
+  { k: 'lock', t: '转向角不够 · 前轮吃不住', d: '打死了还是横不起来，或前轮一打角就打滑。', src: ['rcfYear', 'rcfTune'], acts: [['frontCamber', 0.5, '前外倾减小']],
+    tips: ['前外倾太大会让转向角变小、前轮转向几何变化。', '打死方向后再调拉杆：保持一点点正阿克曼，看对侧前轮离避震约 1 cm。'] }
+];
+let tuneTab = 'base', baseScale = null;
+function bindRig() {
+  const seg = $('#scaleSeg');
+  const mark = () => { $$('#scaleSeg button').forEach(b => b.classList.toggle('on', b.dataset.scale === rig.scale)); moveSeg(seg); };
+  seg.onclick = e => { const b = e.target.closest('[data-scale]'); if (!b) return; rig.scale = b.dataset.scale; rig.tireD = SCALES[rig.scale].d; rig.tireW = SCALES[rig.scale].w; $('#tireD').value = rig.tireD; $('#tireW').value = rig.tireW; mark(); saveRig(); baseScale = rig.scale === '1/10' ? '1/10' : '1/24'; renderTune(); };
+  [['tireD', 10, 120], ['tireW', 3, 60]].forEach(([k, lo, hi]) => $('#' + k).oninput = e => { const v = parseFloat(e.target.value); if (v >= lo && v <= hi) { rig[k] = v; saveRig(); } });
+  mark();
+}
+function setBoardValue(k, v) {
+  const c = CTL.find(x => x[0] === k); if (!c) return false;
+  v = Math.round(Math.max(c[2], Math.min(c[3], v)) * 10) / 10;
+  board[k] = v; const r = $('#r-' + k);
+  if (r) { r.value = v; r.dispatchEvent(new Event('input')); } else saveBoard();
+  return true;
+}
+function srcLinks(keys) { return `<div class="src-row">${keys.map(k => `<a href="${esc(SRC[k][1])}" target="_blank" rel="noopener">${esc(SRC[k][0])} ↗</a>`).join('')}</div>`; }
+function renderTune() {
+  const body = $('#tuneBody'); if (!body) return;
+  $$('#tuneSeg button').forEach(b => b.classList.toggle('on', b.dataset.t === tuneTab)); moveSeg($('#tuneSeg'));
+  $('#tuneSeg').onclick = e => { const b = e.target.closest('[data-t]'); if (b) { tuneTab = b.dataset.t; renderTune(); } };
+  if (tuneTab === 'base') {
+    const key = baseScale || (rig.scale === '1/10' ? '1/10' : '1/24'), B = BASELINES[key];
+    body.innerHTML = `<div class="form-card"><div class="lib-head-row"><div><h3>${B.title} · 起步参考</h3><p class="muted">${B.note}</p></div>
+      <div class="seg" id="baseSeg"><i></i>${Object.keys(BASELINES).map(k => `<button data-b="${k}">${k}</button>`).join('')}</div></div>
+      <div class="base-table">${B.rows.map(([k, l, range, v, why]) => `<div class="base-row"><div><b>${l}</b><small>${esc(why)}</small></div><span class="range">${range}</span><span class="now">当前 ${board[k]}°</span><button class="btn small secondary" data-set="${k}" data-v="${v}">设为 ${v}°</button></div>`).join('')}</div>
+      <div class="mini-actions"><button class="btn primary" id="applyBase">全部套用到调车板</button></div>
+      <p class="muted small-note">这些是起点，不是答案。路面、轮胎、车架几何不同，结果会差很多。套用后建议在「调车工具 → 调校记录」记一笔再试车。</p>${srcLinks(B.src)}</div>`;
+    $$('#baseSeg button').forEach(b => b.classList.toggle('on', b.dataset.b === key)); moveSeg($('#baseSeg'));
+    $('#baseSeg').onclick = e => { const b = e.target.closest('[data-b]'); if (b) { baseScale = b.dataset.b; renderTune(); } };
+    $$('#tuneBody [data-set]').forEach(b => b.onclick = () => { setBoardValue(b.dataset.set, +b.dataset.v); renderTune(); });
+    $('#applyBase').onclick = () => { B.rows.forEach(([k, , , v]) => setBoardValue(k, v)); toast(`已套用 ${B.title} 起步参考`); renderTune(); };
+  }
+  if (tuneTab === 'fix') {
+    body.innerHTML = `<div class="fix-grid">${FIXES.map(f => `<article class="fix-card"><h3>${f.t}</h3><p class="muted">${f.d}</p>
+      ${f.acts.length ? `<div class="fix-acts">${f.acts.map(([k, d, l]) => `<button class="fix-act" data-k="${k}" data-d="${d}"><span>${l}</span><b>${d > 0 ? '+' : ''}${d}${['frontTrack', 'rearTrack'].includes(k) ? ' mm' : '°'}</b></button>`).join('')}</div>` : ''}
+      ${f.tips.length ? `<ul class="fix-tips">${f.tips.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}${srcLinks(f.src)}</article>`).join('')}</div>
+      <p class="muted small-note">点一项就在调车板上改一小步，屏幕上能看到车轮变化。这是方向，不是定量：先改一项、试车、再决定要不要继续。</p>`;
+    $$('#tuneBody .fix-act').forEach(b => b.onclick = () => { const k = b.dataset.k, d = +b.dataset.d; setBoardValue(k, (board[k] || 0) + d); b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); toast(`${b.querySelector('span').textContent}：现在 ${board[k]}${['frontTrack', 'rearTrack'].includes(k) ? ' mm' : '°'}`); });
+  }
+  if (tuneTab === 'fit') {
+    const c = boardCar && BY_ID.get(boardCar);
+    if (!c) { body.innerHTML = `<div class="empty small"><b>还没有叠加车壳。</b>选一款车壳，画板上会用黄色虚线画出它的轮眉，和底盘车轮对照。<br><br><button class="btn primary" id="fitPick">选择车壳</button></div>`; $('#fitPick').onclick = () => openSpot('pick'); return; }
+    const row = (label, chassis, shell, perSide) => {
+      if (chassis == null || shell == null) return `<div class="fit-row"><b>${label}</b><span class="muted">车壳缺少这项数据</span></div>`;
+      const d = Math.round((chassis - shell) * 10) / 10, side = Math.round(d / 2 * 10) / 10;
+      const ok = Math.abs(perSide ? side : d) <= (perSide ? 0.5 : 1);
+      const say = perSide ? (ok ? '对正' : d > 0 ? `每侧外凸 ${side} mm` : `每侧内缩 ${-side} mm`) : (ok ? '对正' : d > 0 ? `底盘长 ${d} mm` : `底盘短 ${-d} mm`);
+      const hint = perSide ? (ok ? '' : d > 0 ? '换 offset 更小的轮毂，或减垫片' : `可加约 ${-side} mm 轮毂垫片 / 换更大 offset`) : (ok ? '' : '可调轴距的车架往车壳轴距靠');
+      return `<div class="fit-row ${ok ? 'ok' : 'off'}"><b>${label}</b><span>底盘 ${chassis} · 车壳 ${shell}</span><span class="say">${say}</span><small>${hint}</small></div>`;
+    };
+    body.innerHTML = `<div class="form-card"><div class="lib-head-row"><div><h3>${esc(c.name)}</h3><p class="muted">${esc(c.brand)} · 车壳尺寸按轮眉中心测；底盘按轮胎中心。黄色虚线 = 车壳轮眉。</p></div>
+      <label class="switch-row small"><span>显示轮眉</span><input type="checkbox" id="shellOn" ${rig.shellOn ? 'checked' : ''}><i class="switch"></i></label></div>
+      <div class="fit-list">${row('轴距', board.wheelbase, c.wb, false)}${row('前轮距', board.frontTrack, c.ft, true)}${row('后轮距', board.rearTrack, c.rt, true)}</div>
+      <div class="mini-actions"><button class="btn secondary" id="fitApply">把底盘设成车壳尺寸</button><button class="btn secondary" id="fitOther">换一款车壳</button><button class="btn small danger" id="fitClear">移除</button></div>
+      <p class="muted small-note">可调轴距的 1/24 车架能兼容大部分静态车壳（例如 BMR-X Pro 标称轴距 99.5–117 mm）。实际装车前请用卡尺复核。</p>${srcLinks(['bmr'])}</div>`;
+    $('#shellOn').onchange = e => { rig.shellOn = e.target.checked; saveRig(); };
+    $('#fitApply').onclick = () => { applyShellToChassis(c); setup(); tuneTab = 'fit'; toast('底盘尺寸已设成车壳尺寸'); };
+    $('#fitOther').onclick = () => openSpot('pick');
+    $('#fitClear').onclick = () => { boardCar = null; saveBoard(); setup(); };
+  }
 }
 /* ---------- steering (ported from the mini program's AKM tools) ---------- */
 const STEER_MODES = [['off', '关'], ['target', '三段目标'], ['rack', '横杆几何'], ['measured', '实测回放'], ['rdx', 'RDX 参考']];
@@ -506,16 +619,24 @@ function stepHandler(e) {
 }
 function boardCarHtml() {
   const c = boardCar && BY_ID.get(boardCar);
-  return c ? `${img(c.thumb, '')}<div><b>${esc(c.name)}</b><span>已带入车壳尺寸 · 点击更换</span></div>${I.arrow}` : `<div><b>从车壳库带入尺寸</b><span>选择一款车壳，自动填入轴距与轮距</span></div>${I.arrow}`;
+  return c ? `${img(c.thumb, '')}<div><b>${esc(c.name)}</b><span>车壳轮眉已叠加在画板上 · ${fitSummary(c)}</span></div>${I.arrow}` : `<div><b>叠加一款车壳</b><span>对照轮眉位置，看轮子是否对正</span></div>${I.arrow}`;
+}
+function fitSummary(c) {
+  if (!c.wb) return '缺少轴距数据';
+  const d = Math.round((board.wheelbase - c.wb) * 10) / 10;
+  return Math.abs(d) <= 1 ? '轴距对正' : `轴距${d > 0 ? '长' : '短'} ${Math.abs(d)} mm`;
 }
 function loadCarToBoard(c, rerender = true) {
+  boardCar = c.id; rig.shellOn = true; store.set('rig', rig); saveBoard();
+  if (rerender) { if (route().name === 'setup') setup(); else location.hash = '#/setup'; toast('已叠加「' + c.name + '」的轮眉，在「车壳适配」里看对正情况'); }
+}
+function applyShellToChassis(c) {
   if (c.wb) board.wheelbase = Math.min(300, Math.max(50, c.wb));
   if (c.ft) board.frontTrack = Math.min(250, Math.max(30, c.ft));
   if (c.rt) board.rearTrack = Math.min(250, Math.max(30, c.rt));
-  boardCar = c.id; saveBoard();
-  if (rerender) { if (route().name === 'setup') setup(); else location.hash = '#/setup'; toast('已带入「' + c.name + '」，请核对底盘实际轮距'); }
+  saveBoard();
 }
-function saveBoard() { store.set('board', board); store.set('boardCar', boardCar); drawBoard(); }
+function saveBoard() { store.set('board', board); store.set('boardCar', boardCar); drawBoard(); const pc = $('#pickCar'); if (pc) pc.innerHTML = boardCarHtml(); if (tuneTab === 'fit' && $('#tuneBody') && !saveBoard.busy) { saveBoard.busy = true; renderTune(); saveBoard.busy = false; } }
 function drawBoard() {
   const canvas = $('#board'); if (!canvas) return;
   const rect = canvas.getBoundingClientRect(), dpr = devicePixelRatio || 1;
@@ -523,7 +644,9 @@ function drawBoard() {
   const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr);
   const ok = cal && cal.key === screenKey();
   const st0 = steeringNow();
-  const g = SetupBoard.draw(ctx, rect.width, rect.height, ok ? cal.scale : { x: 3.78, y: 3.78 }, board, !!ok, null, st0.draw, false);
+  const sc = boardCar && rig.shellOn && BY_ID.get(boardCar);
+  const g = SetupBoard.draw(ctx, rect.width, rect.height, ok ? cal.scale : { x: 3.78, y: 3.78 }, board, !!ok, null, st0.draw, false, null,
+    { tire: { w: rig.tireW, d: rig.tireD }, shell: sc && sc.wb ? { wb: sc.wb, ft: sc.ft, rt: sc.rt, name: sc.name } : null });
   renderWheelRead(st0);
   const st = $('#boardStatus');
   st.classList.toggle('ok', !!ok);
@@ -593,8 +716,8 @@ function openDetail(id) {
       <div class="d-grid">
         <div class="panel"><h3>俯视尺寸</h3><p class="muted">按实测数据等比绘制，轮距按轮眉位置测量。</p>${topView(c)}</div>
         <div class="panel" style="display:flex;flex-direction:column;justify-content:space-between;gap:20px">
-          <div><h3>上调车板对照</h3><p class="muted">把这款车壳的轴距和轮距带入电子调车板，按 1:1 实尺在屏幕上画出来。装车前请核对底盘实际轮距。</p></div>
-          <button class="btn primary" data-board="${esc(id)}">${I.ruler} 带入调车板</button>
+          <div><h3>上调车板对照</h3><p class="muted">把这款车壳的轮眉位置叠加到电子调车板上，和你的底盘车轮对照，看轴距、轮距差多少。</p></div>
+          <button class="btn primary" data-board="${esc(id)}">${I.ruler} 叠加到调车板</button>
           ${c.note ? `<div><h3 style="font-size:17px">备注</h3><p class="note" style="margin-top:8px;padding:0;background:none">${esc(c.note)}</p></div>` : ''}
           ${c.wideLink ? `<div><h3 style="font-size:17px;margin-bottom:8px">宽体套件来源</h3><div class="linkrow" style="background:var(--card2)"><span>${esc(c.wideLink)}</span><button class="btn small secondary" data-copy="${esc(c.wideLink)}">复制</button></div></div>` : ''}
         </div>
@@ -984,7 +1107,7 @@ const TOOL_SOURCES = [
   ['RC Maker：实测 Camber Gain 工具', 'https://www.rcmaker.com.au/products/3dx-carbon-digital-camber-gain-attachment-for-1-10th-onroad-offroad-4mm-axle']
 ];
 const LOG_FIELDS = [['car', '车架 / 版本'], ['surface', '场地 / 路面'], ['tyre', '轮胎'], ['change', '这次只改了什么'], ['before', '调整前的表现'], ['after', '试车后的表现']];
-const CMP_FIELDS = [['wheelbase', '轴距', 'mm'], ['frontTrack', '前轮距', 'mm'], ['rearTrack', '后轮距', 'mm'], ['frontToe', '前单侧 Toe', '°'], ['rearToe', '后单侧 Toe', '°'], ['frontCamber', '前 Camber', '°'], ['rearCamber', '后 Camber', '°']];
+const CMP_FIELDS = [['wheelbase', '轴距', 'mm'], ['frontTrack', '前轮距', 'mm'], ['rearTrack', '后轮距', 'mm'], ['frontToe', '前单侧 Toe', '°'], ['rearToe', '后单侧 Toe', '°'], ['frontCamber', '前 Camber', '°'], ['rearCamber', '后 Camber', '°'], ['caster', 'Caster', '°']];
 let toolTab = 'measure', toolDraft = store.get('toolDraft', {}), cmpIds = [];
 function toolsPage() {
   const tabs = [['measure', '测量换算'], ['weight', '四角配重'], ['log', '调校记录'], ['guide', '怎么测']];
