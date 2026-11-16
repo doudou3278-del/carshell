@@ -168,7 +168,8 @@ function home() {
       <div class="stat"><b data-count="${contributors}">0</b><span>位车友贡献</span></div>
       <div class="stat"><b data-count="${totalViews}">0</b><span>次浏览</span></div>
       <div class="stat"><b data-count="${totalLikes}">0</b><span>个点赞</span></div>
-  </div></section>
+  </div>
+    <p class="visit-strip${siteStats ? ' in' : ''}" id="visitStrip"${siteStats ? '' : ' hidden'}>${visitHTML()}</p></section>
   <section class="section reveal"><div class="wrap">
     <div class="section-head"><div><h2>本周精选。</h2><p>这周被看得最多的一款。</p></div></div>
     <a class="featured" href="#/car/${esc(f.id)}" id="featured">
@@ -1002,6 +1003,7 @@ function footMeta() {
   $('#footMeta').innerHTML = remote
     ? `${CARS.length} 款车壳 · 数据实时来自车友 · <button id="adminLink" class="link-btn">${isAdmin ? '退出管理' : '管理员'}</button>`
     : `数据迁移自「头蚊字 Dou」小程序 · 快照 ${fmtDate(DATA.exportedAt)} · 共 ${CARS.length} 款车壳 · <button id="adminLink" class="link-btn">管理员</button>`;
+  if (siteStats) $('#footMeta').insertAdjacentHTML('beforeend', ` · 累计 ${(+siteStats.visitors).toLocaleString()} 位访客 · 今日 ${(+siteStats.today).toLocaleString()}`);
   if (installMode()) { $('#footMeta').insertAdjacentHTML('beforeend', ` · <button id="installLink" class="link-btn">安装 App</button>`); $('#installLink').onclick = startInstall; }
   $('#adminLink').onclick = adminLogin;
 }
@@ -1433,6 +1435,25 @@ function route() {
   return { name: name || 'home', arg };
 }
 
+/* ---------- site visitor counter ---------- */
+let siteStats = null; // {visits, visitors, today}
+const visitHTML = () => siteStats
+  ? `<i class="live-dot"></i>今日 <b>${(+siteStats.today).toLocaleString()}</b> 位车友来过 · 累计 <b>${(+siteStats.visitors).toLocaleString()}</b> 位访客 · <b>${(+siteStats.visits).toLocaleString()}</b> 次访问`
+  : '';
+function paintVisits() {
+  const el = $('#visitStrip');
+  if (el) { el.innerHTML = visitHTML(); el.hidden = !siteStats; requestAnimationFrame(() => el.classList.add('in')); }
+  footMeta();
+}
+async function countVisit() {
+  if (!sb) return;
+  let counted = false; try { counted = sessionStorage.getItem('dou.counted') === '1'; } catch {}
+  const { data, error } = await sb.rpc('cs_site_visit', { p_token: TOKEN, p_count: !counted });
+  if (error || !data) return;
+  try { sessionStorage.setItem('dou.counted', '1'); } catch {}
+  siteStats = data; paintVisits();
+}
+
 /* ---------- PWA: service worker + install banner ---------- */
 const UA = navigator.userAgent;
 const IS_IOS = /iphone|ipad|ipod/i.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -1567,5 +1588,6 @@ render();
 loadRemote();
 syncInstallUI();
 $('#navInstall').onclick = startInstall;
+countVisit();
 scheduleBanner();
 })();

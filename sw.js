@@ -3,15 +3,15 @@
  * 车壳图片：先用缓存，没有再下载（翻过的车壳断网也能看）
  * Supabase 接口（评论、点赞、登录）：不缓存，直接走网络
  */
-const VERSION = 'dou-v2';
+const VERSION = 'dou-v3';
 const SHELL = `${VERSION}-shell`;
 const IMGS = `${VERSION}-img`;
 const IMG_LIMIT = 400;
 const CORE = [
   './',
   './index.html',
-  './style.css?v=16',
-  './app.js?v=17',
+  './style.css?v=17',
+  './app.js?v=18',
   './board.js?v=4',
   './steering.js?v=1',
   './data.js?v=2',
